@@ -1,0 +1,13 @@
+{
+  "name": "@snaple/core",
+  "version": "0.1.0",
+  "description": "Layout 3D declarativo: estado paramétrico, bounding box, faces como planos de trabalho, containers row/column/stack, furos sem CSG, validação semântica e descrição em prosa. Sem dependência de render.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": { "build": "tsc -b" },
+  "keywords": ["3d", "layout", "cad", "paramétrico", "bounding-box"]
+}

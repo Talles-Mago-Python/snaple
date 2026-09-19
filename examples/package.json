@@ -1,0 +1,7 @@
+{
+  "name": "@snaple/examples",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": { "@snaple/core": "0.1.0", "@snaple/three": "0.1.0" }
+}

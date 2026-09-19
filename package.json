@@ -1,0 +1,21 @@
+{
+  "name": "snaple-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @snaple/core && npm run build -w @snaple/three",
+    "check": "tsc -b packages/core packages/three",
+    "test": "npm run build && node --test 'tests/*.test.ts'",
+    "exemplos": "node examples/mesa.ts && node examples/placa-furada.ts && node examples/prateleira.ts",
+    "relatorio": "node tests/relatorio.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^5.9.0"
+  }
+}

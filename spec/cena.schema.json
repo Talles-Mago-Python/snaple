@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snaple.dev/spec/v1/cena.schema.json",
+  "title": "Cena snaple v1",
+  "description": "Formato de cena do snaple. Contrato NORMATIVO entre o core e qualquer backend de render: é possível escrever um backend lendo só este arquivo e o README ao lado, sem ler o código do core. Unidade: metros. Eixo vertical: +y. Sistema destro. Rotação: Euler XYZ intrínseca, em radianos. Nenhum campo deste formato contém malha — vértices, índices e normais são SEMPRE derivados dos parâmetros pelo backend.",
+  "type": "object",
+  "required": ["version", "unidade", "eixoCima", "raiz"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "unidade": { "const": "m", "description": "Todas as medidas do documento são em metros." },
+    "eixoCima": { "const": "y", "description": "Eixo vertical. Um backend Z-up converte na fronteira dele; o formato não muda." },
+    "raiz": { "$ref": "#/$defs/no" }
+  },
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "ponto2d": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "transform": {
+      "type": "object",
+      "required": ["posicao", "rotacao", "escala"],
+      "additionalProperties": false,
+      "description": "Transform local, relativa ao nó pai. Aplicada na ordem escala → rotação → translação.",
+      "properties": {
+        "posicao": { "$ref": "#/$defs/vec3", "description": "Metros." },
+        "rotacao": { "$ref": "#/$defs/vec3", "description": "Euler XYZ intrínseca, em radianos." },
+        "escala": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Aparência neutra, sem nenhum nome de campo de motor de render. Cada backend traduz para o seu modelo de material.",
+      "properties": {
+        "cor": { "type": "string", "description": "Cor CSS, normalmente '#rrggbb'." },
+        "metalico": { "type": "number", "minimum": 0, "maximum": 1 },
+        "rugosidade": { "type": "number", "minimum": 0, "maximum": 1 },
+        "opacidade": { "type": "number", "minimum": 0, "maximum": 1 },
+        "aramado": { "type": "boolean" }
+      }
+    },
+    "nomeFace": {
+      "description": "Face nomeada do nó, derivada da bounding box da geometria própria. Aliases de eixo são aceitos na entrada e normalizados para o nome longo.",
+      "enum": ["topo", "base", "norte", "sul", "leste", "oeste", "+y", "-y", "-z", "+z", "+x", "-x"]
+    },
+    "formaFuro": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["tipo", "raio"],
+          "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "circulo" },
+            "raio": { "type": "number", "exclusiveMinimum": 0 },
+            "segmentos": { "type": "integer", "minimum": 3, "default": 32 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["tipo", "largura", "altura"],
+          "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "retangulo" },
+            "largura": { "type": "number", "exclusiveMinimum": 0 },
+            "altura": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["tipo", "pontos"],
+          "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "poligono" },
+            "pontos": {
+              "type": "array",
+              "minItems": 3,
+              "items": { "$ref": "#/$defs/ponto2d" },
+              "description": "Polígono fechado no plano da face, coordenadas (u, v) relativas ao CENTRO DO FURO."
+            }
+          }
+        }
+      ]
+    },
+    "feature": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["tipo", "face", "forma", "u", "v"],
+          "additionalProperties": false,
+          "description": "Furo paramétrico. É ESTADO, não uma operação destrutiva: o backend regenera a geometria com o furo incluído, montando o perfil 2D com o buraco e extrudando. Mudar o raio e regerar é uma edição normal.",
+          "properties": {
+            "tipo": { "const": "furo" },
+            "face": { "$ref": "#/$defs/nomeFace" },
+            "forma": { "$ref": "#/$defs/formaFuro" },
+            "u": { "type": "number", "description": "Coordenada no eixo U da face, em metros, com origem no centro da face." },
+            "v": { "type": "number", "description": "Coordenada no eixo V da face." },
+            "profundidade": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Metros, medidos da face para dentro. Ausente = furo passante."
+            }
+          }
+        }
+      ]
+    },
+    "no": {
+      "type": "object",
+      "required": ["id", "tipo", "params", "transform", "filhos", "features"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Único em toda a árvore." },
+        "nome": { "type": "string", "description": "Rótulo semântico opcional ('mesa', 'xícara'). Não afeta a geometria; é o que permite descrever a cena em prosa." },
+        "tipo": {
+          "enum": [
+            "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe",
+            "model", "grupo", "row", "column", "stack"
+          ]
+        },
+        "params": { "type": "object" },
+        "transform": { "$ref": "#/$defs/transform" },
+        "material": { "$ref": "#/$defs/material" },
+        "filhos": { "type": "array", "items": { "$ref": "#/$defs/no" } },
+        "features": { "type": "array", "items": { "$ref": "#/$defs/feature" } }
+      },
+      "allOf": [
+        { "if": { "properties": { "tipo": { "const": "box" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsBox" } } } },
+        { "if": { "properties": { "tipo": { "const": "sphere" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsSphere" } } } },
+        { "if": { "properties": { "tipo": { "const": "cylinder" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsCylinder" } } } },
+        { "if": { "properties": { "tipo": { "const": "cone" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsCone" } } } },
+        { "if": { "properties": { "tipo": { "const": "plane" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsPlane" } } } },
+        { "if": { "properties": { "tipo": { "const": "torus" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsTorus" } } } },
+        { "if": { "properties": { "tipo": { "const": "extrude" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsExtrude" } } } },
+        { "if": { "properties": { "tipo": { "const": "lathe" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsLathe" } } } },
+        { "if": { "properties": { "tipo": { "const": "model" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsModel" }, "features": { "maxItems": 0 } } } },
+        { "if": { "properties": { "tipo": { "enum": ["row", "column", "stack"] } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsFlex" }, "features": { "maxItems": 0 } } } },
+        { "if": { "properties": { "tipo": { "const": "grupo" } }, "required": ["tipo"] },
+          "then": { "properties": { "features": { "maxItems": 0 } } } }
+      ]
+    },
+
+    "paramsBox": {
+      "type": "object", "required": ["largura", "altura", "profundidade"], "additionalProperties": false,
+      "description": "Caixa centrada na origem local: x=largura, y=altura, z=profundidade.",
+      "properties": {
+        "largura": { "type": "number", "minimum": 0 },
+        "altura": { "type": "number", "minimum": 0 },
+        "profundidade": { "type": "number", "minimum": 0 }
+      }
+    },
+    "paramsSphere": {
+      "type": "object", "required": ["raio"], "additionalProperties": false,
+      "properties": {
+        "raio": { "type": "number", "minimum": 0 },
+        "segmentos": { "type": "integer", "minimum": 3, "default": 32 }
+      }
+    },
+    "paramsCylinder": {
+      "type": "object", "required": ["raioTopo", "raioBase", "altura"], "additionalProperties": false,
+      "description": "Eixo de simetria em +y, centrado na origem local. raioTopo == raioBase dá um cilindro reto (o único caso furável sem CSG); diferentes dão um tronco de cone.",
+      "properties": {
+        "raioTopo": { "type": "number", "minimum": 0 },
+        "raioBase": { "type": "number", "minimum": 0 },
+        "altura": { "type": "number", "minimum": 0 },
+        "segmentos": { "type": "integer", "minimum": 3, "default": 32 }
+      }
+    },
+    "paramsCone": {
+      "type": "object", "required": ["raio", "altura"], "additionalProperties": false,
+      "description": "Base em -y, ápice em +y, centrado na origem local.",
+      "properties": {
+        "raio": { "type": "number", "minimum": 0 },
+        "altura": { "type": "number", "minimum": 0 },
+        "segmentos": { "type": "integer", "minimum": 3, "default": 32 }
+      }
+    },
+    "paramsPlane": {
+      "type": "object", "required": ["largura", "profundidade"], "additionalProperties": false,
+      "description": "Superfície plana no plano XZ local, normal +y, espessura EXATAMENTE zero.",
+      "properties": {
+        "largura": { "type": "number", "minimum": 0 },
+        "profundidade": { "type": "number", "minimum": 0 }
+      }
+    },
+    "paramsTorus": {
+      "type": "object", "required": ["raio", "raioTubo"], "additionalProperties": false,
+      "description": "Anel no plano XZ local, eixo de simetria em +y.",
+      "properties": {
+        "raio": { "type": "number", "minimum": 0 },
+        "raioTubo": { "type": "number", "minimum": 0 },
+        "segmentos": { "type": "integer", "minimum": 3, "default": 32 },
+        "segmentosTubo": { "type": "integer", "minimum": 3, "default": 16 }
+      }
+    },
+    "paramsExtrude": {
+      "type": "object", "required": ["perfil", "altura"], "additionalProperties": false,
+      "description": "Perfil 2D fechado declarado no plano XZ local (ponto = [x, z]), extrudado ao longo de +y por `altura`. O backend recentra o perfil na origem local antes de extrudar.",
+      "properties": {
+        "perfil": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/ponto2d" } },
+        "altura": { "type": "number", "minimum": 0 }
+      }
+    },
+    "paramsLathe": {
+      "type": "object", "required": ["perfil"], "additionalProperties": false,
+      "description": "Perfil [raio, altura] revolucionado em torno do eixo +y local. O backend recentra o perfil em y antes de revolucionar.",
+      "properties": {
+        "perfil": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/ponto2d" } },
+        "segmentos": { "type": "integer", "minimum": 3, "default": 32 }
+      }
+    },
+    "paramsModel": {
+      "type": "object", "required": ["src", "tamanho"], "additionalProperties": false,
+      "description": "Objeto por referência. `tamanho` é a bounding box DECLARADA e é o que o layout usa, SEM carregar o arquivo — exatamente como width/height num <img>. Se `src` não existir, o backend desenha uma caixa proxy com esse tamanho. Se a bbox real divergir da declarada, o backend AVISA e não corrige: previsibilidade de layout vem primeiro.",
+      "properties": {
+        "src": { "type": "string" },
+        "tamanho": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "paramsFlex": {
+      "type": "object", "additionalProperties": false,
+      "description": "Container de layout. `row` distribui no eixo X, `column` no Y, `stack` no Z. Não tem geometria própria: a extensão dele é a união das subárvores dos filhos. Como em flexbox, o container sobrescreve a posição dos filhos no eixo principal e nos dois eixos cruzados.",
+      "properties": {
+        "extensao": { "type": "number", "minimum": 0, "description": "Tamanho do container no eixo principal, em metros. Ausente = a faixa é o próprio conteúdo empacotado com `gap`, centrado na origem do container (não há espaço livre a distribuir, e os modos space-* viram `center`)." },
+        "gap": { "type": "number", "minimum": 0, "default": 0, "description": "Folga mínima entre BORDAS de filhos vizinhos. Somada ao espaço livre distribuído por `justify`, como em CSS." },
+        "justify": { "enum": ["start", "center", "end", "space-between", "space-around", "space-evenly"], "default": "center" },
+        "align": { "enum": ["start", "center", "end"], "default": "center", "description": "Aplica-se aos DOIS eixos cruzados. `start` = menor coordenada." }
+      }
+    }
+  }
+}

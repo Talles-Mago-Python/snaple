@@ -1,0 +1,15 @@
+{
+  "name": "@snaple/three",
+  "version": "0.1.0",
+  "description": "Backend Three.js para @snaple/core: consome o JSON da cena e produz THREE.Object3D.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": { "@snaple/core": "0.1.0" },
+  "peerDependencies": { "three": ">=0.160.0" },
+  "devDependencies": { "three": "^0.170.0", "@types/three": "^0.170.0" }
+}
