@@ -14,7 +14,7 @@ resultante em `THREE.Object3D`.
 packages/core    estado, bounding box, faces, layout, features, validação, descrever()
 packages/three   backend: core → Three.js
 spec/            JSON Schema versionado do formato de cena (contrato normativo)
-examples/        exemplos executáveis
+examples/        exemplos executáveis + viewer web
 tests/           testes unitários do core, sem navegador
 ```
 
@@ -250,6 +250,28 @@ isso já aconteceu no core, em Node puro, antes de o Three.js entrar. A
 dependência é de mão única: o core não importa `@snaple/three` e não conhece
 nenhum nome de campo do Three.js.
 
+## Viewer web
+
+Um viewer mínimo para olhar a cena enquanto lê o que o core diz sobre ela:
+
+```bash
+npm run dev
+```
+
+Sobe o Vite em `examples/web/` e abre o navegador. Botão esquerdo orbita,
+botão direito faz pan, scroll dá zoom. O painel ao lado do canvas mostra
+`descrever()` e `avisosTexto()` — dá para conferir o render contra a prosa sem
+sair da página.
+
+A cena montada fica isolada em **`examples/web/cena.ts`**, e é só isso que tem
+lá dentro: nada de câmera, luz ou renderer. Salve o arquivo e a cena remonta
+sozinha, sem recarregar a página; a câmera reenquadra a partir da bounding box
+total, então qualquer cena que entrar no lugar aparece inteira. Erro ao montar
+a cena cai no painel, não numa tela branca.
+
+Os pacotes são resolvidos direto do código-fonte (`vite.config.ts`), então
+mexer em `packages/core/src` também recarrega na hora, sem `npm run build`.
+
 ## Serialização
 
 ```ts
@@ -269,10 +291,12 @@ contra esse schema, então contrato e implementação não divergem em silêncio
 
 ```bash
 npm install
+npm run dev       # viewer web em examples/web
 npm test          # compila e roda a suíte (sem GPU, sem navegador)
 npm run relatorio # os mesmos casos, imprimindo os números em vez do ✔
 npm run exemplos
-npm run check     # só typecheck
+npm run check     # só typecheck (pacotes + viewer)
+npm run build:web # build estático do viewer
 ```
 
 A suíte inclui um teste que **compara a malha que o backend constrói com a

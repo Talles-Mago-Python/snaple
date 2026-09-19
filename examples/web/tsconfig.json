@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "composite": false,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@snaple/core": ["../../packages/core/src/index.ts"],
+      "@snaple/three": ["../../packages/three/src/index.ts"]
+    }
+  },
+  "include": ["*.ts"]
+}

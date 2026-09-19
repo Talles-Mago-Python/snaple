@@ -7,15 +7,18 @@
   ],
   "scripts": {
     "build": "npm run build -w @snaple/core && npm run build -w @snaple/three",
-    "check": "tsc -b packages/core packages/three",
+    "dev": "vite examples/web --open",
+    "check": "tsc -b packages/core packages/three && tsc -p examples/web --noEmit",
     "test": "npm run build && node --test 'tests/*.test.ts'",
     "exemplos": "node examples/mesa.ts && node examples/placa-furada.ts && node examples/prateleira.ts",
-    "relatorio": "node tests/relatorio.ts"
+    "relatorio": "node tests/relatorio.ts",
+    "build:web": "vite build examples/web"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vite": "^8.3.0"
   }
 }
