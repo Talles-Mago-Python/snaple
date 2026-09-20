@@ -25,4 +25,8 @@ export {
   type OpcoesDistribuir as OpcoesDistribuirLayout,
   type OpcoesCircular,
 } from "./layout.ts";
-export { compor, decompor, inverter, multiplicar, aplicarPonto, aplicarDirecao, identidade, type Mat4 } from "./matriz.ts";
+export {
+  compor, decompor, inverter, multiplicar, aplicarPonto, aplicarDirecao, identidade,
+  baseDeEuler, eulerDeBase, type Mat4,
+} from "./matriz.ts";
+export { converter, apontar, conectar, type PontoRef, type OpcoesApontar, type OpcoesConectar } from "./orientacao.ts";

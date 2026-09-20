@@ -38,6 +38,51 @@ export function compor(posicao: Vec3, rotacao: Vec3, escala: Vec3): Mat4 {
   ];
 }
 
+/** As três colunas da matriz de rotação pura de um Euler XYZ — os eixos
+ * locais (`ex`, `ey`, `ez`) expressos no referencial do pai. Mesma conta de
+ * `rot3`, só reorganizada como três `Vec3` em vez de 9 números linha-maior;
+ * é o que `compor` já usa internamente (`r[0],r[3],r[6]` = `ex`, etc). */
+export function baseDeEuler(rotacao: Vec3): { ex: Vec3; ey: Vec3; ez: Vec3 } {
+  const r = rot3(rotacao[0], rotacao[1], rotacao[2]);
+  return {
+    ex: [r[0]!, r[3]!, r[6]!],
+    ey: [r[1]!, r[4]!, r[7]!],
+    ez: [r[2]!, r[5]!, r[8]!],
+  };
+}
+
+/** Inversa de `baseDeEuler`: Euler XYZ intrínseco cuja base de rotação é
+ * `(ex, ey, ez)` — mesma convenção do schema (ver `spec/README.md`). Os três
+ * vetores devem ser ortonormais (uma base de rotação pura, sem escala nem
+ * cisalhamento); use `baseOrtonormal` (`orientacao.ts`) para construir uma a
+ * partir de uma única direção.
+ *
+ * Ângulos de Euler não são únicos: triplas diferentes podem descrever a
+ * mesma rotação, e em gimbal lock (`|ez[0]| ≈ 1`, quando `ey` aponta quase
+ * na direção de `ex` do mundo) só a SOMA/DIFERENÇA de `rx`/`rz` fica
+ * determinada — esta função devolve `rz = 0` nesse caso, por convenção (é o
+ * mesmo ramo que `decompor` já usa). `eulerDeBase(...)` reconstrói SEMPRE a
+ * mesma base (a rotação em si); reconstrói a mesma TRIPLA numérica só longe
+ * do gimbal lock, com ângulos já no intervalo canônico do `atan2`/`asin`. */
+export function eulerDeBase(ex: Vec3, ey: Vec3, ez: Vec3): Vec3 {
+  // mesma extração que `decompor` faz a partir da 3x3 normalizada por escala
+  // (linha-maior: r[0..2]=linha0, r[3..5]=linha1, r[6..8]=linha2)
+  const r = [ex[0], ey[0], ez[0], ex[1], ey[1], ez[1], ex[2], ey[2], ez[2]];
+  return rotacaoDeBase3x3(r);
+}
+
+/** Extrai Euler XYZ de uma 3x3 normalizada em ordem linha-maior (`[ex.x,
+ * ey.x, ez.x, ex.y, ey.y, ez.y, ex.z, ey.z, ez.z]`). Compartilhado por
+ * `eulerDeBase` e por `decompor`, que primeiro normaliza por escala. */
+function rotacaoDeBase3x3(r: readonly number[]): Vec3 {
+  const m13 = Math.min(1, Math.max(-1, r[2]!));
+  const ry = Math.asin(m13);
+  if (Math.abs(m13) < 0.9999999) {
+    return [Math.atan2(-r[5]!, r[8]!), ry, Math.atan2(-r[1]!, r[0]!)];
+  }
+  return [Math.atan2(r[7]!, r[4]!), ry, 0];
+}
+
 export function multiplicar(a: Mat4, b: Mat4): Mat4 {
   const out = new Array<number>(16);
   for (let c = 0; c < 4; c++) {
@@ -133,16 +178,5 @@ export function decompor(m: Mat4): { posicao: Vec3; rotacao: Vec3; escala: Vec3 
     m[1]! * ix, m[5]! * iy, m[9]! * iz,
     m[2]! * ix, m[6]! * iy, m[10]! * iz,
   ];
-  // inversa de rot3 para a ordem XYZ
-  const m13 = Math.min(1, Math.max(-1, r[2]!));
-  const ry = Math.asin(m13);
-  let rx: number, rz: number;
-  if (Math.abs(m13) < 0.9999999) {
-    rx = Math.atan2(-r[5]!, r[8]!);
-    rz = Math.atan2(-r[1]!, r[0]!);
-  } else {
-    rx = Math.atan2(r[7]!, r[4]!);
-    rz = 0;
-  }
-  return { posicao, rotacao: [rx, ry, rz], escala: [sx, sy, sz] };
+  return { posicao, rotacao: rotacaoDeBase3x3(r), escala: [sx, sy, sz] };
 }

@@ -4,10 +4,11 @@
  * abre janela ou fala com GPU — por isso a lib inteira é testável em CI. */
 import { type AABB, aabbDeCentroTamanho } from "./bbox.ts";
 import { type Mundo, type NoMundo, aabbSubarvore, calcularMundo } from "./mundo.ts";
-import { type Mat4, aplicarDirecao, compor, decompor, inverter, multiplicar } from "./matriz.ts";
+import { type Mat4, aplicarDirecao, aplicarPonto, compor, decompor, inverter, multiplicar } from "./matriz.ts";
 import { criarNo, ehContainer, encontrar, percorrer, type OpcoesNo } from "./no.ts";
 import { resolverFlex } from "./flex.ts";
 import { Face } from "./face.ts";
+import { apontar, type OpcoesApontar } from "./orientacao.ts";
 import { type GeometriaDerivada, derivarGeometria } from "./geometria.ts";
 import { type Aviso, avisosDaCena, avisosEmTexto } from "./validar.ts";
 import { descreverCena } from "./descrever.ts";
@@ -175,6 +176,30 @@ export class Cena {
     this.deslocarMundo(alvo, [centro[0] - atual[0], centro[1] - atual[1], centro[2] - atual[2]]);
   }
 
+  /** Leva um ponto do espaço LOCAL de `alvo` para o espaço do MUNDO. */
+  paraMundo(alvo: AlvoNo, p: Vec3): Vec3 {
+    return aplicarPonto(this.mundo().get(this.no(alvo).id)!.matriz, p);
+  }
+
+  /** Leva um ponto do MUNDO para o espaço LOCAL de `alvo` — inversa de
+   * `paraMundo`. */
+  doMundo(alvo: AlvoNo, p: Vec3): Vec3 {
+    return aplicarPonto(inverter(this.mundo().get(this.no(alvo).id)!.matriz), p);
+  }
+
+  /** Como `paraMundo`, mas para uma DIREÇÃO (ignora translação) — vetores de
+   * eixo, normais. Sob escala não uniforme + rotação num ancestral, herda a
+   * mesma limitação de `decompor` (ver comentário lá): o resultado é a
+   * aproximação mais próxima, não uma transformação de normal exata. */
+  direcaoParaMundo(alvo: AlvoNo, v: Vec3): Vec3 {
+    return aplicarDirecao(this.mundo().get(this.no(alvo).id)!.matriz, v);
+  }
+
+  /** Inversa de `direcaoParaMundo`. */
+  direcaoDoMundo(alvo: AlvoNo, v: Vec3): Vec3 {
+    return aplicarDirecao(inverter(this.mundo().get(this.no(alvo).id)!.matriz), v);
+  }
+
   /** Move o nó num único eixo para encostar uma BORDA da sua AABB num valor.
    * `borda`: "min" | "centro" | "max". */
   definirBordaMundo(alvo: AlvoNo, eixo: Eixo | IndiceEixo, borda: "min" | "centro" | "max", valor: number): void {
@@ -288,6 +313,22 @@ export class NoRef {
   bbox(): AABB { return this.cena.bbox(this.id); }
   bboxPropria(): AABB { return this.cena.bboxPropria(this.id); }
   geometria(): GeometriaDerivada { return this.cena.geometria(this.id); }
+
+  /** Ponto do espaço local DESTE nó, levado para o mundo. */
+  paraMundo(p: Vec3): Vec3 { return this.cena.paraMundo(this.id, p); }
+  /** Ponto do mundo, levado para o espaço local DESTE nó. */
+  doMundo(p: Vec3): Vec3 { return this.cena.doMundo(this.id, p); }
+  /** Como `paraMundo`, para uma direção (ignora translação). */
+  direcaoParaMundo(v: Vec3): Vec3 { return this.cena.direcaoParaMundo(this.id, v); }
+  /** Como `doMundo`, para uma direção (ignora translação). */
+  direcaoDoMundo(v: Vec3): Vec3 { return this.cena.direcaoDoMundo(this.id, v); }
+
+  /** Gira o nó para que o eixo local pedido (padrão `y`) aponte em
+   * `direcao`. Ver `apontar` em `orientacao.ts` para a semântica completa. */
+  apontar(direcao: Vec3, opcoes?: OpcoesApontar): this {
+    apontar(this, direcao, opcoes);
+    return this;
+  }
 
   adicionar(no: No | NoRef): NoRef {
     return this.cena.adicionar(no, this.id);

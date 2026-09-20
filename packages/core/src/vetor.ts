@@ -55,6 +55,19 @@ export function distancia(a: Vec3, b: Vec3): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+export function produtoEscalar(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+/** Produto vetorial, sistema destro: `produtoVetorial([1,0,0], [0,1,0]) = [0,0,1]`. */
+export function produtoVetorial(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
 /** Converte qualquer entrada numérica duvidosa num número finito.
  * Params vindos de JSON externo podem trazer `null`/string — sem isto, um
  * `NaN` se propagaria silenciosamente por toda a bounding box. */
