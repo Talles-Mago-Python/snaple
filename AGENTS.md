@@ -131,9 +131,11 @@ npm run dev        # viewer web (Vite) em examples/web, hot-reload direto do src
   nó, para todas as primitivas e hierarquias giradas/escaladas; é o que pega
   regressão de convenção (eixo, centragem, rotação de extrusão) sem abrir
   navegador.
-- Ao mexer em `examples/web/cena.ts`: é o único arquivo que o viewer observa
-  para hot-reload; **não** coloque câmera, luz ou renderer lá — isso é
-  responsabilidade fixa do viewer, fora do arquivo de cena.
+- Modelos do viewer moram em `examples/web/modelos/*.ts` — cada arquivo que
+  exporta `montarCena(): Cena` vira uma opção no seletor sozinho (o
+  `main.ts` escaneia a pasta via `import.meta.glob`, não precisa editá-lo
+  para adicionar um modelo). **Não** coloque câmera, luz ou renderer num
+  arquivo de modelo — isso é responsabilidade fixa do viewer (`viewer.ts`).
 
 ## Erros comuns a evitar
 

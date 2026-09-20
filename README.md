@@ -452,11 +452,17 @@ botão direito faz pan, scroll dá zoom. O painel ao lado do canvas mostra
 `descrever()` e `avisosTexto()` — dá para conferir o render contra a prosa sem
 sair da página.
 
-A cena montada fica isolada em **`examples/web/cena.ts`**, e é só isso que tem
-lá dentro: nada de câmera, luz ou renderer. Salve o arquivo e a cena remonta
-sozinha, sem recarregar a página; a câmera reenquadra a partir da bounding box
-total, então qualquer cena que entrar no lugar aparece inteira. Erro ao montar
-a cena cai no painel, não numa tela branca.
+Cada arquivo em **`examples/web/modelos/`** que exporta `montarCena(): Cena`
+vira uma opção no seletor no topo do painel — nada de câmera, luz ou renderer
+ali dentro, isso é responsabilidade fixa do viewer. Para adicionar um modelo
+novo, crie o arquivo e salve: o seletor lista sozinho, sem editar nenhum
+código do viewer (o Vite escaneia a pasta via `import.meta.glob`). Trocar de
+modelo no seletor, ou salvar o arquivo do modelo já selecionado, remonta sem
+recarregar a página; a câmera reenquadra a partir da bounding box total,
+então qualquer cena que entrar aparece inteira. Erro ao montar cai no painel,
+não numa tela branca. A escolha atual fica na URL (`?cena=nome`,
+compartilhável) e em `localStorage`, então recarregar a página mantém o
+mesmo modelo.
 
 Os pacotes são resolvidos direto do código-fonte (`vite.config.ts`), então
 mexer em `packages/core/src` também recarrega na hora, sem `npm run build`.

@@ -32,6 +32,33 @@
       #painel { margin: 0; white-space: pre-wrap; }
       #painel.com-aviso { color: #ffc46b; }
       #dica { margin: 8px 0 0; color: #6b7480; }
+      #picker { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+      #picker label { color: #6b7480; flex-shrink: 0; }
+      #picker select {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 10px;
+        background: #22252b;
+        color: #d7dbe0;
+        border: 1px solid #3a4048;
+        border-radius: 4px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #picker select:hover { border-color: #4a515b; }
+      #exportar { display: flex; gap: 8px; margin: 0 0 10px; }
+      #exportar button {
+        flex: 1;
+        padding: 6px 10px;
+        background: #22252b;
+        color: #d7dbe0;
+        border: 1px solid #3a4048;
+        border-radius: 4px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #exportar button:hover { background: #2a2e35; border-color: #4a515b; }
+      #exportar button:active { background: #1e2126; }
       @media (min-width: 900px) {
         body { grid-template-rows: none; grid-template-columns: 1fr 26rem; }
         #rodape { border-top: 0; border-left: 1px solid #33383f; max-height: none; }
@@ -41,10 +68,20 @@
   <body>
     <canvas id="palco"></canvas>
     <div id="rodape">
+      <div id="picker">
+        <label for="modelo">Modelo</label>
+        <select id="modelo"></select>
+      </div>
+      <div id="exportar">
+        <button type="button" data-formato="glb">Exportar .glb</button>
+        <button type="button" data-formato="obj">Exportar .obj</button>
+        <button type="button" data-formato="stl">Exportar .stl</button>
+      </div>
       <pre id="painel">carregando…</pre>
       <p id="dica">
         botão esquerdo orbita · botão direito faz pan · scroll dá zoom<br />
-        edite <code>examples/web/cena.ts</code> e salve — a cena remonta sozinha
+        escolha um modelo acima, ou edite o arquivo dele em
+        <code>examples/web/modelos/</code> e salve — a cena remonta sozinha
       </p>
     </div>
     <script type="module" src="/main.ts"></script>

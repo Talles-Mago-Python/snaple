@@ -39,9 +39,10 @@ roda no final:
    bloqueia (ver `README.md`, seção "O linter de cena") — cabe a você separar
    "flutuando de propósito" (uma prateleira na parede, uma peça de vista
    explodida) de "flutuando por engano" (esqueceu de encostar algo).
-5. **Só então** abra o viewer (`npm run dev`, cole o conteúdo em
-   `examples/web/cena.ts`) para conferir visualmente. Chegar no viewer com a
-   prosa e os avisos já limpos economiza a maior parte das voltas do loop.
+5. **Só então** abra o viewer (`npm run dev`) e escolha o arquivo no seletor
+   — se ele já mora em `examples/web/modelos/`, aparece sozinho na lista.
+   Chegar no viewer com a prosa e os avisos já limpos economiza a maior
+   parte das voltas do loop.
 
 Repita até `descrever()` contar exatamente a história que você quer.
 
@@ -87,9 +88,10 @@ export function montarCena(): Cena {
 
 - **Testável.** Um script de verificação chama `montarCena()` quantas vezes
   quiser sem reimportar o módulo.
-- **Reaproveitável no viewer.** `examples/web/cena.ts` é lido pelo Vite a
-  cada save; se a montagem fosse top-level, um `import` acidental duplicado
-  reconstruiria a cena duas vezes.
+- **Reaproveitável no viewer.** Qualquer arquivo em `examples/web/modelos/`
+  é lido pelo Vite a cada save e listado no seletor; se a montagem fosse
+  top-level, um `import` acidental duplicado reconstruiria a cena duas
+  vezes.
 - **Sem estado global.** Duas cenas diferentes no mesmo processo (por
   exemplo, um teste que monta a peça duas vezes com parâmetros diferentes)
   não compartilham nó nenhum.
@@ -194,7 +196,7 @@ gerar aviso de interpenetração/flutuação entre si no linter, e ganha
 Use isso sempre que o modelo tiver uma junta/articulação, ou uma peça
 assentada que o resto do código pode mover depois — ver a seção
 "[Acoplamentos](../README.md#acoplamentos--verificar-não-resolver)" do
-README para a referência completa, e `examples/web/robo_frc.ts` para um
+README para a referência completa, e `examples/web/modelos/robo_frc.ts` para um
 modelo real com dezenas de acoplamentos conferidos numa varredura de poses.
 
 ## Padrões que aparecem em quase todo modelo
@@ -266,10 +268,11 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
 - **Servidor MCP** (`packages/mcp`): `carregar_cena_json` lê o arquivo,
   `avisos_cena`/`descrever_cena` reconferem, `exportar_cena` renderiza para
   `.glb`/`.obj`/`.stl` sem abrir navegador (usa `@snaple/three` headless).
-- **Viewer web**: cole o corpo de `montarCena()` em `examples/web/cena.ts` e
-  rode `npm run dev` — o painel ao lado do canvas mostra os mesmos
-  `descrever()`/`avisosTexto()` que o script imprimiu no terminal, então dá
-  para conferir texto contra imagem sem sair da página.
+- **Viewer web**: salve o arquivo em `examples/web/modelos/` e rode
+  `npm run dev` — ele aparece sozinho no seletor, e o painel ao lado do
+  canvas mostra os mesmos `descrever()`/`avisosTexto()` que o script
+  imprimiu no terminal, então dá para conferir texto contra imagem sem sair
+  da página.
 
 ## Checklist antes de considerar o modelo pronto
 
@@ -315,25 +318,27 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
 
 ## Exemplos completos no repositório
 
-- [`examples/web/camera.ts`](../examples/web/camera.ts) — modelo mais denso
-  do repo (uma câmera fotográfica inteira), bom exemplo de biblioteca de
-  helpers ampliada quando a peça tem muitas sub-montagens repetidas (texto
-  vetorial, parafusos, serrilhado).
-- [`examples/web/relogio_explodido.ts`](../examples/web/relogio_explodido.ts)
+Os quatro primeiros moram em `examples/web/modelos/` — abra o viewer
+(`npm run dev`) e escolha qualquer um deles no seletor para ver ao vivo:
+
+- [`examples/web/modelos/camera.ts`](../examples/web/modelos/camera.ts) —
+  modelo mais denso do repo (uma câmera fotográfica inteira), bom exemplo de
+  biblioteca de helpers ampliada quando a peça tem muitas sub-montagens
+  repetidas (texto vetorial, parafusos, serrilhado).
+- [`examples/web/modelos/relogio_explodido.ts`](../examples/web/modelos/relogio_explodido.ts)
   — vista explodida em camadas com cursor de empilhamento, sub-montagem
   (engrenagens, ponteiros) com seu próprio gap menor, e peças giradas por
   fórmula de ângulo (ponteiros, marcadores de hora).
-- [`examples/web/robo_frc.ts`](../examples/web/robo_frc.ts) — dezenas de
-  juntas (`cena.acoplar` tipo `pivo`) e peças aparafusadas (tipo `contato`)
-  conferidas com `cena.conferirMontagem()` numa varredura de poses; o
-  exemplo de referência para a seção "Peças articuladas ou assentadas"
-  acima.
+- [`examples/web/modelos/robo_frc.ts`](../examples/web/modelos/robo_frc.ts) —
+  dezenas de juntas (`cena.acoplar` tipo `pivo`) e peças aparafusadas (tipo
+  `contato`) conferidas com `cena.conferirMontagem()` numa varredura de
+  poses; o exemplo de referência para a seção "Peças articuladas ou
+  assentadas" acima.
+- [`examples/web/modelos/teste.ts`](../examples/web/modelos/teste.ts) —
+  ponto de partida em branco (uma base e um marcador), pensado para copiar e
+  editar quando o modelo ainda não tem nome definitivo.
 - [`examples/oficina.ts`](../examples/oficina.ts) — cena de estresse: as 8
   geometrias paramétricas, furos (passante/parcial/polígono), faces com e
   sem reorientação, os três containers e as sete funções relacionais, tudo
-  numa cena só.
-- [`examples/web/cena.ts`](../examples/web/cena.ts) — o "slot" que o viewer
-  (`npm run dev`) carrega; o conteúdo troca com frequência (é o rascunho de
-  quem está modelando no momento), então trate como escrita, não como
-  referência — leia o cabeçalho do arquivo para saber o que está montado ali
-  agora.
+  numa cena só. Roda direto (`node examples/oficina.ts`) ou copiada para
+  `modelos/` para ver no viewer.

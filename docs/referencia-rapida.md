@@ -303,7 +303,7 @@ cena.conferirMontagem(opcoes?: { tolerancia?: number }) => {
   o aviso `acoplamento-violado` se deixar de valer na pose atual.
 - `remover()` descarta em cascata qualquer acoplamento que referencie o nó
   removido (ou um descendente dele) — não sobra referência órfã.
-- Exemplo real completo: `examples/web/robo_frc.ts` — pivôs em toda junta
+- Exemplo real completo: `examples/web/modelos/robo_frc.ts` — pivôs em toda junta
   (swerve, punho, garra, intake) e contatos em toda peça aparafusada,
   conferidos numa varredura de dezenas de poses.
 
