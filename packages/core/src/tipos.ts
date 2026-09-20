@@ -27,13 +27,14 @@ export type TransformParcial = Partial<Transform>;
  * `bbox.ts` para por que essa invariante simplifica todo o resto. */
 export type TipoGeometria =
   | "box" | "sphere" | "cylinder" | "cone" | "plane" | "torus"
-  | "extrude" | "lathe";
+  | "extrude" | "lathe" | "helix";
 
 /** Nó que referencia um arquivo externo por `src`, com `tamanho` declarado. */
 export type TipoModelo = "model";
 
-/** Containers: não têm geometria própria, só organizam filhos. */
-export type TipoContainer = "grupo" | "row" | "column" | "stack";
+/** Containers: não têm geometria própria, só organizam filhos. `junta` é um
+ * container também nesse sentido (sem geometria) — ver `ParamsJunta`. */
+export type TipoContainer = "grupo" | "row" | "column" | "stack" | "junta";
 
 export type TipoNo = TipoGeometria | TipoModelo | TipoContainer;
 
@@ -49,10 +50,41 @@ export interface ParamsCone { raio: number; altura: number; segmentos?: number }
 export interface ParamsPlane { largura: number; profundidade: number }
 /** Anel no plano XZ local, eixo de simetria em +y. */
 export interface ParamsTorus { raio: number; raioTubo: number; segmentos?: number; segmentosTubo?: number }
-/** Perfil 2D fechado no plano XZ local (u=x, v=z), extrudado ao longo de +y. */
-export interface ParamsExtrude { perfil: Ponto2D[]; altura: number }
-/** Perfil `[raio, altura]` revolucionado em torno do eixo +y local. */
-export interface ParamsLathe { perfil: Ponto2D[]; segmentos?: number }
+/** Perfil 2D fechado no plano XZ local (u=x, v=z), extrudado ao longo de +y.
+ *
+ * `recentrar` (padrão `true`) recentra o perfil na própria bounding box antes
+ * de extrudar — é o que preserva a invariante geral de geometria centrada na
+ * origem local. `recentrar: false` usa as coordenadas do perfil como estão,
+ * sem deslocar: o nó nasce com a origem local onde o perfil a colocou, não no
+ * centro da peça. Isso é uma EXCEÇÃO deliberada à invariante, para quem
+ * projeta o perfil num sistema de coordenadas próprio (por exemplo, várias
+ * peças desenhadas para se encaixarem por um ponto de referência comum) e
+ * precisa que esse ponto continue sendo a origem do nó. O eixo de extrusão
+ * (y) continua sempre centrado, `recentrar` só afeta o plano XZ. */
+export interface ParamsExtrude { perfil: Ponto2D[]; altura: number; recentrar?: boolean }
+/** Perfil `[raio, altura]` revolucionado em torno do eixo +y local.
+ *
+ * Por padrão (`recentrar` ausente ou `true`) o core recentra o perfil em Y
+ * antes de revolucionar, preservando a invariante de geometria centrada na
+ * origem local — mesma ideia de `ParamsExtrude.recentrar`, só que aqui é o
+ * eixo Y que se ajusta (o eixo da revolução), não o plano XZ (que já é
+ * sempre simétrico em torno do eixo, por ser um sólido de revolução).
+ * `recentrar: false` usa as alturas do perfil como estão, sem deslocar — o
+ * nó nasce com a origem local onde o perfil a colocou. */
+export interface ParamsLathe { perfil: Ponto2D[]; segmentos?: number; recentrar?: boolean }
+/** Hélice: um tubo de seção circular varrendo um caminho helicoidal em torno
+ * do eixo +y local, centrado na origem — mesmo eixo de `cylinder`/`lathe`.
+ * `passo` é a distância percorrida em y por volta completa; `voltas` pode ser
+ * fracionário. Primeiro (e único, por ora) caso de varredura ao longo de um
+ * caminho — ver nota em `README.md` sobre um futuro `sweep` genérico. */
+export interface ParamsHelix {
+  raio: number;
+  raioTubo: number;
+  passo: number;
+  voltas: number;
+  segmentosPorVolta?: number;
+  segmentosTubo?: number;
+}
 /** Objeto por referência. `tamanho` é a bounding box DECLARADA e é o que o
  * layout usa — sem carregar o arquivo, exatamente como `width`/`height` num
  * `<img>`. Se `src` não existir, o backend desenha uma caixa proxy. */
@@ -76,6 +108,17 @@ export interface ParamsFlex {
 
 export type ParamsGrupo = Record<string, never>;
 
+/** Junta articulada: sem geometria própria (como `grupo`), mas a ROTAÇÃO em
+ * torno de `eixo` vem de `angulo`, não de `transform.rotacao` (que fica sem
+ * efeito num nó `junta` — mudar a pose é `definirParams`, não `transformar`).
+ * `limites`, se presente, é `[mínimo, máximo]` em radianos; o linter avisa
+ * quando `angulo` sai desse intervalo, mas nunca bloqueia. */
+export interface ParamsJunta {
+  eixo: "x" | "y" | "z";
+  angulo: number;
+  limites?: [number, number];
+}
+
 /** Mapa tipo → forma dos params. É o que dá autocomplete correto em
  * `cena.criar('box', { ... })` sem `any`. */
 export interface ParamsPorTipo {
@@ -87,11 +130,13 @@ export interface ParamsPorTipo {
   torus: ParamsTorus;
   extrude: ParamsExtrude;
   lathe: ParamsLathe;
+  helix: ParamsHelix;
   model: ParamsModel;
   grupo: ParamsGrupo;
   row: ParamsFlex;
   column: ParamsFlex;
   stack: ParamsFlex;
+  junta: ParamsJunta;
 }
 
 export type ParamsDe<T extends TipoNo> = ParamsPorTipo[T];
@@ -139,6 +184,21 @@ export interface Material {
   rugosidade?: number;
   opacidade?: number;
   aramado?: boolean;
+  /** Cor própria, que não depende de luz — um mostrador de relógio aceso,
+   * um LED. `intensidade` (padrão 1) escala a cor antes de somar; backends
+   * sem HDR devem tratar valores acima de 1 como recorte no branco. */
+  emissivo?: { cor: string; intensidade?: number };
+}
+
+// ── Validação ────────────────────────────────────────────────────────────
+
+/** Exceções declaradas ao linter. Hoje só `contatoIntencional`: ids de
+ * outros nós com os quais este nó pode se sobrepor sem gerar aviso de
+ * interpenetração — um prego cravado numa tábua, uma rosca encaixada. Vale
+ * numa direção só (A lista B OU B lista A já basta), mesmo padrão de
+ * `saoParentes` para pai/filho em `mundo.ts`. */
+export interface Validacao {
+  contatoIntencional?: string[];
 }
 
 // ── Nó ───────────────────────────────────────────────────────────────────
@@ -154,6 +214,7 @@ export interface No<T extends TipoNo = TipoNo> {
   material?: Material;
   filhos: No[];
   features: Feature[];
+  validacao?: Validacao;
 }
 
 export type NoQualquer = No<TipoNo>;

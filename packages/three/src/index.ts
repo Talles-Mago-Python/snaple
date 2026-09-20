@@ -9,7 +9,7 @@
  * XZ, extrusão em +Z, material) moram todas aqui. */
 import * as THREE from "three";
 import {
-  Cena, derivarGeometria,
+  Cena, derivarGeometria, rotacaoEfetiva,
   type CenaJSON, type Material, type No, type ParamsModel, type Vec3,
 } from "@snaple/core";
 import { construirGeometrias, caixaProxy } from "./geometria.ts";
@@ -75,7 +75,8 @@ async function construirNo(
   raiz.userData.snaple = { id: no.id, tipo: no.tipo, ...(no.nome ? { nome: no.nome } : {}) };
   const t = no.transform;
   raiz.position.set(t.posicao[0], t.posicao[1], t.posicao[2]);
-  raiz.rotation.set(t.rotacao[0], t.rotacao[1], t.rotacao[2], "XYZ");
+  const rotacao = rotacaoEfetiva(no);
+  raiz.rotation.set(rotacao[0], rotacao[1], rotacao[2], "XYZ");
   raiz.scale.set(t.escala[0], t.escala[1], t.escala[2]);
   for (const filho of no.filhos) {
     raiz.add(await construirNo(cena, filho, opcoes, avisar));
@@ -207,5 +208,9 @@ export function construirMaterial(m: Material | undefined): THREE.Material {
     transparent: opacidade < 1,
     wireframe: m?.aramado ?? false,
     side: THREE.DoubleSide,
+    ...(m?.emissivo ? {
+      emissive: new THREE.Color(m.emissivo.cor),
+      emissiveIntensity: m.emissivo.intensidade ?? 1,
+    } : {}),
   });
 }

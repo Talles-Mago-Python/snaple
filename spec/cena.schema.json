@@ -45,7 +45,27 @@
         "metalico": { "type": "number", "minimum": 0, "maximum": 1 },
         "rugosidade": { "type": "number", "minimum": 0, "maximum": 1 },
         "opacidade": { "type": "number", "minimum": 0, "maximum": 1 },
-        "aramado": { "type": "boolean" }
+        "aramado": { "type": "boolean" },
+        "emissivo": {
+          "type": "object", "required": ["cor"], "additionalProperties": false,
+          "description": "Cor própria, que não depende de luz — um mostrador aceso, um LED.",
+          "properties": {
+            "cor": { "type": "string" },
+            "intensidade": { "type": "number", "minimum": 0, "default": 1 }
+          }
+        }
+      }
+    },
+    "validacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Exceções declaradas ao linter — hoje só contato intencional.",
+      "properties": {
+        "contatoIntencional": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ids de outros nós com os quais este nó pode se sobrepor sem gerar aviso de interpenetração. Vale numa direção só: A listar B já basta, não precisa listar dos dois lados."
+        }
       }
     },
     "nomeFace": {
@@ -121,15 +141,16 @@
         "nome": { "type": "string", "description": "Rótulo semântico opcional ('mesa', 'xícara'). Não afeta a geometria; é o que permite descrever a cena em prosa." },
         "tipo": {
           "enum": [
-            "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe",
-            "model", "grupo", "row", "column", "stack"
+            "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix",
+            "model", "grupo", "row", "column", "stack", "junta"
           ]
         },
         "params": { "type": "object" },
         "transform": { "$ref": "#/$defs/transform" },
         "material": { "$ref": "#/$defs/material" },
         "filhos": { "type": "array", "items": { "$ref": "#/$defs/no" } },
-        "features": { "type": "array", "items": { "$ref": "#/$defs/feature" } }
+        "features": { "type": "array", "items": { "$ref": "#/$defs/feature" } },
+        "validacao": { "$ref": "#/$defs/validacao" }
       },
       "allOf": [
         { "if": { "properties": { "tipo": { "const": "box" } }, "required": ["tipo"] },
@@ -148,12 +169,16 @@
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsExtrude" } } } },
         { "if": { "properties": { "tipo": { "const": "lathe" } }, "required": ["tipo"] },
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsLathe" } } } },
+        { "if": { "properties": { "tipo": { "const": "helix" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsHelix" } } } },
         { "if": { "properties": { "tipo": { "const": "model" } }, "required": ["tipo"] },
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsModel" }, "features": { "maxItems": 0 } } } },
         { "if": { "properties": { "tipo": { "enum": ["row", "column", "stack"] } }, "required": ["tipo"] },
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsFlex" }, "features": { "maxItems": 0 } } } },
         { "if": { "properties": { "tipo": { "const": "grupo" } }, "required": ["tipo"] },
-          "then": { "properties": { "features": { "maxItems": 0 } } } }
+          "then": { "properties": { "features": { "maxItems": 0 } } } },
+        { "if": { "properties": { "tipo": { "const": "junta" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsJunta" }, "features": { "maxItems": 0 } } } }
       ]
     },
 
@@ -212,18 +237,32 @@
     },
     "paramsExtrude": {
       "type": "object", "required": ["perfil", "altura"], "additionalProperties": false,
-      "description": "Perfil 2D fechado declarado no plano XZ local (ponto = [x, z]), extrudado ao longo de +y por `altura`. O backend recentra o perfil na origem local antes de extrudar.",
+      "description": "Perfil 2D fechado declarado no plano XZ local (ponto = [x, z]), extrudado ao longo de +y por `altura`. Por padrão (`recentrar` ausente ou `true`) o core recentra o perfil na sua própria bounding box antes de extrudar, preservando a invariante de geometria centrada na origem local. `recentrar: false` usa as coordenadas do perfil como estão, sem deslocar — o nó nasce com a origem local onde o perfil a colocou (útil para peças desenhadas num sistema de coordenadas próprio, com um ponto de referência que precisa continuar sendo a origem do nó); o eixo de extrusão (y) continua sempre centrado independente disso.",
       "properties": {
         "perfil": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/ponto2d" } },
-        "altura": { "type": "number", "minimum": 0 }
+        "altura": { "type": "number", "minimum": 0 },
+        "recentrar": { "type": "boolean", "default": true }
       }
     },
     "paramsLathe": {
       "type": "object", "required": ["perfil"], "additionalProperties": false,
-      "description": "Perfil [raio, altura] revolucionado em torno do eixo +y local. O backend recentra o perfil em y antes de revolucionar.",
+      "description": "Perfil [raio, altura] revolucionado em torno do eixo +y local. Por padrão (`recentrar` ausente ou `true`) o core recentra o perfil em y antes de revolucionar, preservando a invariante de geometria centrada na origem local. `recentrar: false` usa as alturas do perfil como estão, sem deslocar — simétrico ao `recentrar` de `extrude`, só que no eixo da revolução em vez do plano da base (que já é sempre simétrico em torno do eixo, por ser um sólido de revolução).",
       "properties": {
         "perfil": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/ponto2d" } },
-        "segmentos": { "type": "integer", "minimum": 3, "default": 32 }
+        "segmentos": { "type": "integer", "minimum": 3, "default": 32 },
+        "recentrar": { "type": "boolean", "default": true }
+      }
+    },
+    "paramsHelix": {
+      "type": "object", "required": ["raio", "raioTubo", "passo", "voltas"], "additionalProperties": false,
+      "description": "Tubo de seção circular varrendo um caminho helicoidal em torno do eixo +y local, centrado na origem (mesmo eixo de `cylinder`/`lathe`). `passo` é a distância percorrida em y por volta completa; `voltas` pode ser fracionário. Primeiro caso de varredura ao longo de um caminho suportado pelo core — ver nota no README sobre um futuro `sweep` genérico.",
+      "properties": {
+        "raio": { "type": "number", "exclusiveMinimum": 0, "description": "Raio do caminho helicoidal (eixo até o centro do tubo)." },
+        "raioTubo": { "type": "number", "exclusiveMinimum": 0, "description": "Raio da seção circular do tubo." },
+        "passo": { "type": "number", "description": "Distância percorrida em y por volta completa." },
+        "voltas": { "type": "number", "exclusiveMinimum": 0 },
+        "segmentosPorVolta": { "type": "integer", "minimum": 3, "default": 24 },
+        "segmentosTubo": { "type": "integer", "minimum": 3, "default": 8 }
       }
     },
     "paramsModel": {
@@ -242,6 +281,18 @@
         "gap": { "type": "number", "minimum": 0, "default": 0, "description": "Folga mínima entre BORDAS de filhos vizinhos. Somada ao espaço livre distribuído por `justify`, como em CSS." },
         "justify": { "enum": ["start", "center", "end", "space-between", "space-around", "space-evenly"], "default": "center" },
         "align": { "enum": ["start", "center", "end"], "default": "center", "description": "Aplica-se aos DOIS eixos cruzados. `start` = menor coordenada." }
+      }
+    },
+    "paramsJunta": {
+      "type": "object", "required": ["eixo", "angulo"], "additionalProperties": false,
+      "description": "Junta articulada: sem geometria própria (como grupo), mas a ROTAÇÃO do nó em torno de `eixo` vem de `angulo`, não de `transform.rotacao` (que um backend deve ignorar num nó `junta` — ver Validação no README do spec). `limites`, se presente, é só para o linter: fora dele vira aviso, nunca bloqueio.",
+      "properties": {
+        "eixo": { "enum": ["x", "y", "z"] },
+        "angulo": { "type": "number", "description": "Radianos." },
+        "limites": {
+          "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2,
+          "description": "[mínimo, máximo] em radianos."
+        }
       }
     }
   }

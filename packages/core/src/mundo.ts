@@ -6,7 +6,7 @@
  * geometria própria, layout sai da subárvore inteira. */
 import { type Mat4, compor, identidade, multiplicar } from "./matriz.ts";
 import { type AABB, aabbProprio, aabbDeCentroTamanho, unirAABB } from "./bbox.ts";
-import { percorrer } from "./no.ts";
+import { percorrer, rotacaoEfetiva } from "./no.ts";
 import type { No } from "./tipos.ts";
 
 export interface NoMundo {
@@ -31,7 +31,7 @@ export type Mundo = ReadonlyMap<string, NoMundo>;
 export function aabbSubarvore(no: No, matriz: Mat4): AABB | null {
   let acc = aabbProprio(no, matriz);
   for (const filho of no.filhos) {
-    const m = multiplicar(matriz, compor(filho.transform.posicao, filho.transform.rotacao, filho.transform.escala));
+    const m = multiplicar(matriz, compor(filho.transform.posicao, rotacaoEfetiva(filho), filho.transform.escala));
     acc = unirAABB(acc, aabbSubarvore(filho, m));
   }
   return acc;
@@ -41,7 +41,7 @@ export function aabbSubarvore(no: No, matriz: Mat4): AABB | null {
  * próprio nó — ou seja: "que caixa esse nó ocupa se eu puser a origem dele
  * em (0,0,0)". Rotação e escala próprias CONTAM. */
 export function aabbRelativa(no: No): AABB {
-  const m = compor([0, 0, 0], no.transform.rotacao, no.transform.escala);
+  const m = compor([0, 0, 0], rotacaoEfetiva(no), no.transform.escala);
   return aabbSubarvore(no, m) ?? aabbDeCentroTamanho([0, 0, 0], [0, 0, 0]);
 }
 
@@ -54,7 +54,7 @@ export function calcularMundo(raiz: No): Mundo {
     if (mapa.has(no.id)) {
       throw new Error(`id duplicado na árvore: '${no.id}'`);
     }
-    const local = compor(no.transform.posicao, no.transform.rotacao, no.transform.escala);
+    const local = compor(no.transform.posicao, rotacaoEfetiva(no), no.transform.escala);
     const matriz = pai ? multiplicar(matrizes.get(pai.id)!, local) : local;
     matrizes.set(no.id, matriz);
     const ancestrais = pai ? [...ancestraisDe.get(pai.id)!, pai.id] : [];

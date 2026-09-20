@@ -5,8 +5,11 @@
  * (um prego cravado numa tábua), e a lib não tem como saber. Saem em duas
  * formas: array estruturado (para código) e texto (para um LLM ler). */
 import { sobreposicao, sobrepoeNoPlano } from "./bbox.ts";
+import { type OBB, obbDoNo, obbsSeSobrepoem } from "./obb.ts";
 import { saoParentes } from "./mundo.ts";
+import { percorrer } from "./no.ts";
 import type { Cena } from "./cena.ts";
+import type { ParamsJunta } from "./tipos.ts";
 import { type Eixo, type IndiceEixo, arred } from "./vetor.ts";
 
 /** Folga abaixo da qual duas bboxes "só se tocam" em vez de penetrar. */
@@ -43,14 +46,51 @@ export interface AvisoCentrosCoincidentes extends AvisoBase {
   distancia: number;
 }
 
-export type Aviso = AvisoInterpenetracao | AvisoFlutuando | AvisoCentrosCoincidentes;
+/** Não é um problema: um par que se sobrepõe geometricamente, mas foi
+ * declarado como contato intencional (`no.permitirContato(outro)`) — por
+ * isso fica de fora de `avisosEmTexto()` (que só lista problemas) e existe
+ * para `descrever()` poder resumir quantos contatos assim foram ignorados. */
+export interface AvisoContatoIntencional extends AvisoBase {
+  tipo: "contato-intencional";
+  nos: [string, string];
+}
+
+export interface AvisoJuntaForaDoLimite extends AvisoBase {
+  tipo: "junta-fora-do-limite";
+  no: string;
+  angulo: number;
+  limites: [number, number];
+}
+
+export type Aviso =
+  | AvisoInterpenetracao | AvisoFlutuando | AvisoCentrosCoincidentes
+  | AvisoContatoIntencional | AvisoJuntaForaDoLimite;
+
+function emGraus(rad: number): string {
+  return `${arred((rad * 180) / Math.PI, 1)}°`;
+}
 
 const NOME_EIXO: readonly Eixo[] = ["x", "y", "z"];
+
+/** `a` permitiu contato com `b`, ou vice-versa — uma direção já basta (mesmo
+ * padrão de `saoParentes` para pai/filho). */
+function contatoPermitido(a: { no: { id: string; validacao?: { contatoIntencional?: string[] } } }, b: typeof a): boolean {
+  return !!a.no.validacao?.contatoIntencional?.includes(b.no.id)
+    || !!b.no.validacao?.contatoIntencional?.includes(a.no.id);
+}
 
 export function avisosDaCena(cena: Cena): Aviso[] {
   const nos = cena.nosGeometricos();
   const mundo = cena.mundo();
   const avisos: Aviso[] = [];
+  // OBB de cada nó, calculada uma vez (não por par) a partir da matriz de
+  // mundo já resolvida — é só um refinamento de precisão sobre a mesma AABB
+  // `propria` usada abaixo, não substitui a fase ampla.
+  const obbs = new Map<string, OBB>();
+  for (const m of nos) {
+    const obb = obbDoNo(m.no, m.matriz);
+    if (obb) obbs.set(m.no.id, obb);
+  }
 
   for (let i = 0; i < nos.length; i++) {
     for (let j = i + 1; j < nos.length; j++) {
@@ -58,17 +98,36 @@ export function avisosDaCena(cena: Cena): Aviso[] {
       if (saoParentes(mundo, a.no.id, b.no.id)) continue;
       const ca = a.propria!, cb = b.propria!;
       const s = sobreposicao(ca, cb);
-      if (s[0]! > TOL_CONTATO && s[1]! > TOL_CONTATO && s[2]! > TOL_CONTATO) {
-        // o eixo de MENOR sobreposição é a distância mínima de separação
-        let menor: IndiceEixo = 0;
-        for (const k of [1, 2] as IndiceEixo[]) if (s[k]! < s[menor]!) menor = k;
-        avisos.push({
-          tipo: "interpenetracao",
-          nos: [a.no.id, b.no.id],
-          eixo: NOME_EIXO[menor]!,
-          valor: s[menor]!,
-          texto: `${a.no.id} penetra ${b.no.id} em ${fmt(s[menor]!)} m no eixo ${NOME_EIXO[menor]}`,
-        });
+      const sobrepoeAABB = s[0]! > TOL_CONTATO && s[1]! > TOL_CONTATO && s[2]! > TOL_CONTATO;
+      // AABB é a fase AMPLA (barata, mas infla peças giradas); só quando ela
+      // já indica sobreposição é que vale a pena rodar o SAT orientado, que
+      // é o que decide de verdade — elimina o falso positivo clássico de
+      // duas peças giradas cujas AABBs se cruzam sem as caixas reais se
+      // tocarem.
+      if (sobrepoeAABB) {
+        const obbA = obbs.get(a.no.id), obbB = obbs.get(b.no.id);
+        const sobrepoeDeVerdade = obbA && obbB ? obbsSeSobrepoem(obbA, obbB) : true;
+        if (sobrepoeDeVerdade) {
+          if (contatoPermitido(a, b)) {
+            avisos.push({
+              tipo: "contato-intencional",
+              nos: [a.no.id, b.no.id],
+              texto: `${a.no.id} e ${b.no.id} se sobrepõem, mas o contato foi declarado intencional`,
+            });
+          } else {
+            // o eixo de MENOR sobreposição (na AABB) é a distância mínima de
+            // separação — mantido como antes, o SAT só decide SE reportar.
+            let menor: IndiceEixo = 0;
+            for (const k of [1, 2] as IndiceEixo[]) if (s[k]! < s[menor]!) menor = k;
+            avisos.push({
+              tipo: "interpenetracao",
+              nos: [a.no.id, b.no.id],
+              eixo: NOME_EIXO[menor]!,
+              valor: s[menor]!,
+              texto: `${a.no.id} penetra ${b.no.id} em ${fmt(s[menor]!)} m no eixo ${NOME_EIXO[menor]}`,
+            });
+          }
+        }
       }
       const d = Math.hypot(
         ca.centro[0] - cb.centro[0], ca.centro[1] - cb.centro[1], ca.centro[2] - cb.centro[2],
@@ -105,12 +164,31 @@ export function avisosDaCena(cena: Cena): Aviso[] {
     }
   }
 
+  for (const { no } of percorrer(cena.raiz)) {
+    if (no.tipo !== "junta") continue;
+    const p = no.params as ParamsJunta;
+    if (!p.limites) continue;
+    const [min, max] = p.limites;
+    if (p.angulo < min || p.angulo > max) {
+      avisos.push({
+        tipo: "junta-fora-do-limite",
+        no: no.id,
+        angulo: p.angulo,
+        limites: p.limites,
+        texto: `${no.id}: ângulo ${emGraus(p.angulo)} fora do limite [${emGraus(min)}, ${emGraus(max)}]`,
+      });
+    }
+  }
+
   return avisos;
 }
 
+/** Só os avisos que são PROBLEMAS — `contato-intencional` fica de fora (não
+ * é algo a corrigir, é `descrever()` que resume quantos foram ignorados). */
 export function avisosEmTexto(avisos: readonly Aviso[]): string {
-  if (avisos.length === 0) return "";
-  return avisos.map((a) => `AVISO: ${a.texto}`).join("\n");
+  const problemas = avisos.filter((a) => a.tipo !== "contato-intencional");
+  if (problemas.length === 0) return "";
+  return problemas.map((a) => `AVISO: ${a.texto}`).join("\n");
 }
 
 function fmt(v: number): string {

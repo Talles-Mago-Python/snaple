@@ -8,6 +8,7 @@ import { type Mat4, aplicarDirecao, aplicarPonto, compor, decompor, inverter, mu
 import { criarNo, ehContainer, encontrar, percorrer, type OpcoesNo } from "./no.ts";
 import { resolverFlex } from "./flex.ts";
 import { Face } from "./face.ts";
+import { Lateral } from "./lateral.ts";
 import { apontar, type OpcoesApontar } from "./orientacao.ts";
 import { type GeometriaDerivada, derivarGeometria } from "./geometria.ts";
 import { type Aviso, avisosDaCena, avisosEmTexto } from "./validar.ts";
@@ -233,6 +234,19 @@ export class Cena {
     this.invalidar();
   }
 
+  /** Declara que `alvo` pode se sobrepor com `outro` sem virar aviso de
+   * interpenetração — um prego cravado numa tábua, uma rosca encaixada. Vale
+   * numa direção só; não precisa chamar dos dois lados. */
+  permitirContato(alvo: AlvoNo, outro: AlvoNo): void {
+    const no = this.no(alvo);
+    const idOutro = this.no(outro).id;
+    const lista = no.validacao?.contatoIntencional ?? [];
+    if (!lista.includes(idOutro)) {
+      no.validacao = { ...no.validacao, contatoIntencional: [...lista, idOutro] };
+    }
+    this.invalidar();
+  }
+
   // ── Análise ───────────────────────────────────────────────────────────
 
   avisos(): Aviso[] {
@@ -310,6 +324,12 @@ export class NoRef {
     return new Face(this.cena, this.id, nome);
   }
 
+  /** Superfície de revolução deste nó (`cylinder`/`lathe`) como plano de
+   * trabalho — ver `Lateral`. */
+  lateral(): Lateral {
+    return new Lateral(this.cena, this.id);
+  }
+
   bbox(): AABB { return this.cena.bbox(this.id); }
   bboxPropria(): AABB { return this.cena.bboxPropria(this.id); }
   geometria(): GeometriaDerivada { return this.cena.geometria(this.id); }
@@ -362,6 +382,12 @@ export class NoRef {
   nomear(nome: string): this {
     this.no.nome = nome;
     this.cena.invalidar();
+    return this;
+  }
+
+  /** Declara este contato como intencional — ver `Cena.permitirContato`. */
+  permitirContato(outro: AlvoNo): this {
+    this.cena.permitirContato(this.id, outro);
     return this;
   }
 

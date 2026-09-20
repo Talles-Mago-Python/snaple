@@ -16,7 +16,7 @@ import { type Mat4, aplicarPonto } from "./matriz.ts";
 import { type Vec3, type Ponto2D, type IndiceEixo, num, EPS } from "./vetor.ts";
 import type {
   No, TipoNo, ParamsBox, ParamsSphere, ParamsCylinder, ParamsCone,
-  ParamsPlane, ParamsTorus, ParamsExtrude, ParamsLathe, ParamsModel,
+  ParamsPlane, ParamsTorus, ParamsExtrude, ParamsLathe, ParamsHelix, ParamsModel,
 } from "./tipos.ts";
 
 export interface AABB {
@@ -128,6 +128,27 @@ export function meiaExtensaoLocal(no: No): Vec3 | null {
       const r = Math.max(...raios);
       return [r, (Math.max(...ys) - Math.min(...ys)) / 2, r];
     }
+    case "helix": {
+      // Analítica, sem tocar em malha: no plano XZ o tubo nunca passa de
+      // raio + raioTubo do eixo (a trajetória fica a `raio` fixo, e o tubo
+      // soma no máximo `raioTubo` a partir daquele ponto).
+      //
+      // Em Y, a trajetória cobre `passo × voltas`, mas isso SUBESTIMA a
+      // malha real: nas duas pontas abertas do tubo, a "tampa" (círculo
+      // perpendicular à TANGENTE, não ao eixo Y) pode ir além do y da própria
+      // trajetória — o quanto depende do ângulo de passo. No limite de passo
+      // raso (quase um anel achatado — o caso `mola`/`cabo espiralado` com
+      // poucas voltas de passo curto), esse excesso tende a `raioTubo`
+      // inteiro. Somar essa margem nas duas pontas é o que garante que a
+      // malha do backend sempre CABE dentro da bbox que o core declarou —
+      // confirmado contra a malha real do TubeGeometry em
+      // `tests/backend.test.ts`.
+      const q = p as unknown as ParamsHelix;
+      const raioTubo = num(q.raioTubo, 0.01);
+      const alcanceXZ = num(q.raio, 0.1) + raioTubo;
+      const alturaTotal = Math.abs(num(q.passo, 0.05)) * num(q.voltas, 1);
+      return [alcanceXZ, alturaTotal / 2 + raioTubo, alcanceXZ];
+    }
     case "model": {
       const t = (p as unknown as ParamsModel).tamanho ?? [1, 1, 1];
       return [num(t[0], 1) / 2, num(t[1], 1) / 2, num(t[2], 1) / 2];
@@ -136,6 +157,7 @@ export function meiaExtensaoLocal(no: No): Vec3 | null {
     case "row":
     case "column":
     case "stack":
+    case "junta":
       return null;
     default: {
       const _exaustivo: never = no.tipo as never;
@@ -158,17 +180,52 @@ export function extensaoPerfil(pontos: readonly Ponto2D[]): { meio: Ponto2D; cen
   };
 }
 
-/** AABB mundial da geometria própria do nó: os 8 cantos da meia-extensão
- * local levados pela matriz acumulada, e min/max em cada eixo. */
-export function aabbProprio(no: No, matriz: Mat4): AABB | null {
+export interface CaixaLocal { min: Vec3; max: Vec3 }
+
+/** Caixa local PRÓPRIA de um nó: como `meiaExtensaoLocal`, mas expressa como
+ * min/max em vez de meia-extensão, o que permite representar geometria
+ * DESCENTRADA da origem — hoje só `extrude` com `recentrar: false` usa isso.
+ * Para todo o resto, `min = -max` (a mesma caixa simétrica de sempre). */
+export function caixaLocalPropria(no: No): CaixaLocal | null {
+  if (no.tipo === "extrude" && (no.params as ParamsExtrude).recentrar === false) {
+    const q = no.params as ParamsExtrude;
+    const { meio, centro } = extensaoPerfil(q.perfil ?? []);
+    const meiaAltura = num(q.altura, 1) / 2;
+    return {
+      min: [centro[0] - meio[0], -meiaAltura, centro[1] - meio[1]],
+      max: [centro[0] + meio[0], meiaAltura, centro[1] + meio[1]],
+    };
+  }
+  // Simétrico ao caso de `extrude` acima, mas no eixo Y (o da revolução) em
+  // vez do plano XZ: o raio continua sempre simétrico em torno do eixo (é
+  // um sólido de revolução), só a faixa de altura fica como o perfil
+  // declarou, sem recentrar.
+  if (no.tipo === "lathe" && (no.params as ParamsLathe).recentrar === false) {
+    const q = no.params as ParamsLathe;
+    const pts = q.perfil ?? [];
+    if (pts.length === 0) return { min: [0, 0, 0], max: [0, 0, 0] };
+    const r = Math.max(...pts.map((pt) => Math.abs(num(pt[0]))));
+    const ys = pts.map((pt) => num(pt[1]));
+    return { min: [-r, Math.min(...ys), -r], max: [r, Math.max(...ys), r] };
+  }
   const h = meiaExtensaoLocal(no);
   if (!h) return null;
+  return { min: [-h[0], -h[1], -h[2]], max: [h[0], h[1], h[2]] };
+}
+
+/** AABB mundial da geometria própria do nó: os 8 cantos da caixa local
+ * levados pela matriz acumulada, e min/max em cada eixo. Generaliza para
+ * caixa local assimétrica (ver `caixaLocalPropria`) — para o caso comum,
+ * simétrico, o resultado é idêntico a inflar ±meia-extensão como antes. */
+export function aabbProprio(no: No, matriz: Mat4): AABB | null {
+  const caixa = caixaLocalPropria(no);
+  if (!caixa) return null;
   let min: Vec3 = [Infinity, Infinity, Infinity];
   let max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const sx of [-1, 1]) {
-    for (const sy of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const c = aplicarPonto(matriz, [h[0] * sx, h[1] * sy, h[2] * sz]);
+  for (const sx of [caixa.min[0], caixa.max[0]]) {
+    for (const sy of [caixa.min[1], caixa.max[1]]) {
+      for (const sz of [caixa.min[2], caixa.max[2]]) {
+        const c = aplicarPonto(matriz, [sx, sy, sz]);
         for (let i = 0; i < 3; i++) {
           if (c[i]! < min[i]!) min[i] = c[i]!;
           if (c[i]! > max[i]!) max[i] = c[i]!;

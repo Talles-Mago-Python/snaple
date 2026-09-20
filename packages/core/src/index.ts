@@ -11,6 +11,7 @@
 export * from "./vetor.ts";
 export * from "./tipos.ts";
 export * from "./bbox.ts";
+export * from "./obb.ts";
 export * from "./no.ts";
 export * from "./mundo.ts";
 export * from "./flex.ts";
@@ -30,3 +31,10 @@ export {
   baseDeEuler, eulerDeBase, type Mat4,
 } from "./matriz.ts";
 export { converter, apontar, conectar, type PontoRef, type OpcoesApontar, type OpcoesConectar } from "./orientacao.ts";
+export { Lateral, type OpcoesLateralColocar } from "./lateral.ts";
+export { padraoCircular, type OpcoesPadraoCircular } from "./padroes.ts";
+export { arco, estadio, gota, retanguloArredondado, poligonoRegular, elipse } from "./perfis.ts";
+export {
+  texto, planoDeFace, planoDeLateral, tracosDoGlifo,
+  type Plano, type OpcoesTexto,
+} from "./texto.ts";

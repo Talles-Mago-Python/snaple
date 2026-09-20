@@ -26,12 +26,17 @@ test("toda combinação de tipo de nó valida contra o schema", () => {
   cena.criar("plane", { largura: 4, profundidade: 4 });
   cena.criar("torus", { raio: 0.5, raioTubo: 0.12 });
   cena.criar("extrude", { perfil: [[0, 0], [1, 0], [1, 1], [0, 1]], altura: 0.3 });
+  cena.criar("extrude", { perfil: [[0, 0], [1, 0], [1, 1], [0, 1]], altura: 0.3, recentrar: false });
   cena.criar("lathe", { perfil: [[0, 0], [0.3, 0.1], [0.2, 0.5], [0, 0.6]] });
+  cena.criar("helix", { raio: 0.02, raioTubo: 0.004, passo: 0.015, voltas: 6 });
   cena.criar("model", { src: "a.glb", tamanho: [1, 1, 1] });
   const linha = cena.criar("row", { extensao: 5, gap: 0.1, justify: "space-between", align: "end" });
   linha.criar("column", { gap: 0.05 });
   cena.criar("stack", {});
   cena.criar("grupo", {});
+  cena.criar("junta", { eixo: "x", angulo: 0.4 });
+  cena.criar("junta", { eixo: "y", angulo: -1.2, limites: [-1.5, 1.5] });
+  cena.criar("sphere", { raio: 0.05 }, { material: { cor: "#222", emissivo: { cor: "#ffcc00", intensidade: 2 } } });
   const placa = cena.criar("box", { largura: 0.5, altura: 0.02, profundidade: 0.5 });
   placa.furar({ face: "topo", forma: { tipo: "circulo", raio: 0.03 }, u: 0.1, v: 0.1 });
   placa.furar({ face: "base", forma: { tipo: "retangulo", largura: 0.05, altura: 0.05 }, u: -0.1, v: 0, profundidade: 0.01 });

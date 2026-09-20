@@ -1,15 +1,15 @@
 /** Construção e travessia de nós. */
 import type {
-  Feature, Material, No, ParamsDe, TipoNo, Transform, TransformParcial,
+  Feature, Material, No, ParamsDe, ParamsJunta, TipoNo, Transform, TransformParcial, Validacao,
 } from "./tipos.ts";
-import type { Vec3 } from "./vetor.ts";
+import { type Vec3, indiceDoEixo } from "./vetor.ts";
 
 export const TIPOS_NO: readonly TipoNo[] = [
-  "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe",
-  "model", "grupo", "row", "column", "stack",
+  "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix",
+  "model", "grupo", "row", "column", "stack", "junta",
 ];
 
-export const TIPOS_CONTAINER: readonly TipoNo[] = ["grupo", "row", "column", "stack"];
+export const TIPOS_CONTAINER: readonly TipoNo[] = ["grupo", "row", "column", "stack", "junta"];
 export const TIPOS_FLEX: readonly TipoNo[] = ["row", "column", "stack"];
 
 export function ehContainer(no: No): boolean {
@@ -18,6 +18,21 @@ export function ehContainer(no: No): boolean {
 
 export function ehFlex(no: No): boolean {
   return TIPOS_FLEX.includes(no.tipo);
+}
+
+/** A rotação REALMENTE aplicada ao resolver o mundo: para todo nó, exceto
+ * `junta`, é `transform.rotacao`. Para `junta`, `transform.rotacao` é
+ * ignorada — a rotação vem de `params.angulo` em torno de `params.eixo`. É
+ * o que faz mudar a pose de uma junta ser `definirParams`, não
+ * `transformar`. Usada em todo lugar que hoje lê `no.transform.rotacao`
+ * para montar a matriz de mundo (`mundo.ts`) ou construir a malha
+ * (`@snaple/three`). */
+export function rotacaoEfetiva(no: No): Vec3 {
+  if (no.tipo !== "junta") return no.transform.rotacao;
+  const p = no.params as ParamsJunta;
+  const r: Vec3 = [0, 0, 0];
+  r[indiceDoEixo(p.eixo)] = p.angulo;
+  return r;
 }
 
 export function transformPadrao(): Transform {
@@ -43,6 +58,7 @@ export interface OpcoesNo {
   material?: Material;
   features?: Feature[];
   filhos?: No[];
+  validacao?: Validacao;
 }
 
 export function criarNo<T extends TipoNo>(
@@ -62,6 +78,7 @@ export function criarNo<T extends TipoNo>(
     ...(opcoes.material ? { material: { ...opcoes.material } } : {}),
     filhos: opcoes.filhos ?? [],
     features: opcoes.features ?? [],
+    ...(opcoes.validacao ? { validacao: { ...opcoes.validacao } } : {}),
   };
 }
 

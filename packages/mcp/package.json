@@ -1,0 +1,23 @@
+{
+  "name": "@snaple/mcp",
+  "version": "0.1.0",
+  "description": "Servidor MCP do snaple: expõe criação/edição de cenas 3D declarativas (via @snaple/core) e exportação (via @snaple/three) como tools MCP, para uso por Claude Code e outros clientes MCP.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "snaple-mcp": "./dist/index.js" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": {
+    "@snaple/core": "0.1.0",
+    "@snaple/three": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "three": "^0.170.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0"
+  }
+}
