@@ -25,7 +25,7 @@
  * | sul    | +z     | -x  | +y  |
  * | norte  | -z     | +x  | +y  |
  */
-import { type AABB, aabbDeMinMax, meiaExtensaoLocal } from "./bbox.ts";
+import { type AABB, aabbDeMinMax, caixaLocalPropria } from "./bbox.ts";
 import { aplicarDirecao, compor, decompor, inverter, multiplicar } from "./matriz.ts";
 import type { AlvoNo, Cena, NoRef } from "./cena.ts";
 import { aabbNoEspacoDe } from "./cena.ts";
@@ -139,8 +139,8 @@ export class Face {
    * embaixo que a anterior. Containers, que não têm geometria própria, caem
    * para a subárvore por definição. */
   caixaLocal(): AABB {
-    const h = meiaExtensaoLocal(this.dono);
-    if (h) return aabbDeMinMax([-h[0], -h[1], -h[2]], [h[0], h[1], h[2]]);
+    const c = caixaLocalPropria(this.dono);
+    if (c) return aabbDeMinMax(c.min, c.max);
     return aabbNoEspacoDe(this.cena, this.idDono, this.idDono);
   }
 
@@ -178,6 +178,18 @@ export class Face {
     const n = aplicarDirecao(m, this.frame.normal);
     const c = Math.hypot(n[0], n[1], n[2]) || 1;
     return [n[0] / c, n[1] / c, n[2] / c];
+  }
+
+  /** Eixos U/V da face no espaço do mundo (normalizados) — mesma ideia de
+   * `normalMundo()`, para quem precisa do plano inteiro (não só a normal),
+   * por exemplo para orientar algo "de lado" em vez de "para fora". */
+  eixosMundo(): { u: Vec3; v: Vec3 } {
+    const m = this.cena.mundo().get(this.idDono)!.matriz;
+    const unit = (v: Vec3): Vec3 => {
+      const c = Math.hypot(v[0], v[1], v[2]) || 1;
+      return [v[0] / c, v[1] / c, v[2] / c];
+    };
+    return { u: unit(aplicarDirecao(m, this.frame.u)), v: unit(aplicarDirecao(m, this.frame.v)) };
   }
 
   /** Ponto (u,v) do plano da face em coordenadas locais do dono. */

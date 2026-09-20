@@ -7,15 +7,16 @@ import { type Mundo, type NoMundo, aabbSubarvore, calcularMundo } from "./mundo.
 import { type Mat4, aplicarDirecao, aplicarPonto, compor, decompor, inverter, multiplicar } from "./matriz.ts";
 import { criarNo, ehContainer, encontrar, percorrer, type OpcoesNo } from "./no.ts";
 import { resolverFlex } from "./flex.ts";
-import { Face } from "./face.ts";
+import { Face, normalizarFace } from "./face.ts";
 import { Lateral } from "./lateral.ts";
 import { apontar, type OpcoesApontar } from "./orientacao.ts";
+import { conferirMontagem as conferirMontagemImpl, type RelatorioMontagem } from "./acoplamento.ts";
 import { type GeometriaDerivada, derivarGeometria } from "./geometria.ts";
 import { type Aviso, avisosDaCena, avisosEmTexto } from "./validar.ts";
 import { descreverCena } from "./descrever.ts";
 import {
-  type CenaJSON, type FaceEntrada, type Feature, type FeatureFuro, type Material,
-  type No, type ParamsDe, type TipoNo, type Transform, type TransformParcial,
+  type Acoplamento, type CenaJSON, type FaceEntrada, type Feature, type FeatureFuro, type Material,
+  type No, type ParamsDe, type TipoAcoplamento, type TipoNo, type Transform, type TransformParcial,
   VERSAO_CENA,
 } from "./tipos.ts";
 import { type Eixo, type IndiceEixo, type Vec3, indiceDoEixo } from "./vetor.ts";
@@ -33,6 +34,8 @@ export class Cena {
   readonly raiz: No;
   #contador = 0;
   #mundo: Mundo | null = null;
+  #acoplamentos: Acoplamento[] = [];
+  #contadorAcoplamentos = 0;
 
   constructor(raiz?: No) {
     this.raiz = raiz ?? criarNo("grupo", {}, { id: ID_RAIZ });
@@ -106,6 +109,14 @@ export class Cena {
     const pai = this.paiDe(no.id);
     if (!pai) throw new Error(`a raiz da cena não pode ser removida`);
     pai.filhos.splice(pai.filhos.indexOf(no), 1);
+    // Acoplamento referenciando um nó que acabou de sair da árvore (ele ou
+    // um descendente dele) fica órfão — sem isso, conferirMontagem()/o
+    // linter lançariam ao tentar resolver um id que não existe mais.
+    const idsRemovidos = new Set<string>();
+    for (const { no: d } of percorrer(no)) idsRemovidos.add(d.id);
+    this.#acoplamentos = this.#acoplamentos.filter(
+      (ac) => !idsRemovidos.has(ac.a.no) && !idsRemovidos.has(ac.b.no),
+    );
     this.invalidar();
     return no;
   }
@@ -247,6 +258,57 @@ export class Cena {
     this.invalidar();
   }
 
+  // ── Acoplamentos ─────────────────────────────────────────────────────
+
+  /** Declara uma relação entre duas faces — verificada sob demanda por
+   * `conferirMontagem()`/o linter, nunca resolvida (não move nada). */
+  acoplar(o: {
+    tipo: TipoAcoplamento;
+    nome?: string;
+    a: { no: AlvoNo; face: FaceEntrada };
+    b: { no: AlvoNo; face: FaceEntrada };
+  }): AcoplamentoRef {
+    let id: string;
+    do {
+      id = `acoplamento_${++this.#contadorAcoplamentos}`;
+    } while (this.#acoplamentos.some((ac) => ac.id === id));
+    const ac: Acoplamento = {
+      id, tipo: o.tipo, ...(o.nome !== undefined ? { nome: o.nome } : {}),
+      a: { no: this.no(o.a.no).id, face: normalizarFace(o.a.face) },
+      b: { no: this.no(o.b.no).id, face: normalizarFace(o.b.face) },
+    };
+    this.#acoplamentos.push(ac);
+    return new AcoplamentoRef(this, id);
+  }
+
+  acoplamentos(): readonly Acoplamento[] {
+    return this.#acoplamentos;
+  }
+
+  /** Resolve um id (ou `AcoplamentoRef`) para o dado guardado na cena. */
+  acoplamento(alvo: AcoplamentoRef | string): Acoplamento {
+    const id = typeof alvo === "string" ? alvo : alvo.id;
+    const achado = this.#acoplamentos.find((ac) => ac.id === id);
+    if (!achado) throw new Error(`acoplamento '${id}' não existe na cena`);
+    return achado;
+  }
+
+  desacoplar(alvo: AcoplamentoRef | string): void {
+    const id = typeof alvo === "string" ? alvo : alvo.id;
+    const i = this.#acoplamentos.findIndex((ac) => ac.id === id);
+    if (i === -1) throw new Error(`acoplamento '${id}' não existe na cena`);
+    this.#acoplamentos.splice(i, 1);
+  }
+
+  /** Confere todos os acoplamentos nas poses atuais. Nunca move nada — só
+   * mede. `tolerancia` (padrão 1e-6) vale tanto para o erro de posição
+   * (metros) quanto para o de ângulo (radianos): mesmo número, dois
+   * sentidos — é a mesma convenção que o protótipo que motivou este método
+   * já usava para os dois. */
+  conferirMontagem(opcoes: { tolerancia?: number } = {}): RelatorioMontagem {
+    return conferirMontagemImpl(this, this.#acoplamentos, opcoes.tolerancia ?? 1e-6);
+  }
+
   // ── Análise ───────────────────────────────────────────────────────────
 
   avisos(): Aviso[] {
@@ -271,6 +333,7 @@ export class Cena {
       unidade: "m",
       eixoCima: "y",
       raiz: canonizar(structuredClone(this.raiz)),
+      ...(this.#acoplamentos.length ? { acoplamentos: structuredClone(this.#acoplamentos) } : {}),
     };
   }
 
@@ -287,8 +350,32 @@ export class Cena {
       if (m) maior = Math.max(maior, Number(m[1]));
     }
     cena.#contador = maior;
+
+    cena.#acoplamentos = structuredClone(json.acoplamentos ?? []);
+    let maiorAcoplamento = 0;
+    for (const ac of cena.#acoplamentos) {
+      const m = /^acoplamento_(\d+)$/.exec(ac.id);
+      if (m) maiorAcoplamento = Math.max(maiorAcoplamento, Number(m[1]));
+    }
+    cena.#contadorAcoplamentos = maiorAcoplamento;
     return cena;
   }
+}
+
+/** Handle sobre um acoplamento — mesmo padrão de `NoRef`, só guarda
+ * `cena` + `id`; o dado de verdade mora em `Cena.acoplamentos()`. */
+export class AcoplamentoRef {
+  readonly cena: Cena;
+  readonly id: string;
+
+  constructor(cena: Cena, id: string) {
+    this.cena = cena;
+    this.id = id;
+  }
+
+  get dados(): Acoplamento { return this.cena.acoplamento(this.id); }
+  get tipo(): TipoAcoplamento { return this.dados.tipo; }
+  get nome(): string | undefined { return this.dados.nome; }
 }
 
 /** Handle sobre um nó da cena. Só guarda `cena` + `id` — o dado de verdade

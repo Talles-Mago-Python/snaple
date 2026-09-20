@@ -281,6 +281,28 @@ export function descreverCena(cena: Cena): string {
     frases.push(`${maiuscula} ${concordar(rotulo, "dobrad")} a ${emGraus(p.angulo)}.`);
   }
 
+  // Acoplamentos: `a` é a referência (fixo/suporte), `b` o dependente
+  // (móvel/peça) — convenção de quem chamou `acoplar`, não algo imposto
+  // pelo tipo. Frase própria por tipo, reusando o mesmo vocabulário
+  // ("apoiada sobre") já usado acima para apoio geométrico comum.
+  for (const ac of cena.acoplamentos()) {
+    const rotuloA = rotuloDe(cena.no(ac.a.no));
+    const rotuloB = rotuloDe(cena.no(ac.b.no));
+    const artigoB = artigoDefinido(rotuloB);
+    const ArtigoB = artigoB.charAt(0).toUpperCase() + artigoB.slice(1);
+    if (ac.tipo === "pivo") {
+      const nomeTexto = ac.nome ? ` "${ac.nome}"` : "";
+      frases.push(
+        `${ArtigoB} ${rotuloB} gira em torno do pivô${nomeTexto} d${artigoDefinido(rotuloA)} ${rotuloA}.`,
+      );
+    } else {
+      frases.push(
+        `${ArtigoB} ${rotuloB} está ${concordar(rotuloB, "assentad")} sobre ` +
+        `${artigoDefinido(rotuloA)} ${rotuloA}.`,
+      );
+    }
+  }
+
   const avisos = cena.avisos();
   const problemas = avisos.filter((a) => a.tipo !== "contato-intencional");
   if (problemas.length > 0) {

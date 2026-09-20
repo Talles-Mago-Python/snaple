@@ -10,7 +10,12 @@
     "version": { "const": 1 },
     "unidade": { "const": "m", "description": "Todas as medidas do documento são em metros." },
     "eixoCima": { "const": "y", "description": "Eixo vertical. Um backend Z-up converte na fronteira dele; o formato não muda." },
-    "raiz": { "$ref": "#/$defs/no" }
+    "raiz": { "$ref": "#/$defs/no" },
+    "acoplamentos": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/acoplamento" },
+      "description": "Relações declaradas entre faces de dois nós, verificadas sob demanda (nunca resolvidas — não afetam `transform`). Ausente ou vazio = nenhuma. Um backend que só desenha a malha pode ignorar este campo inteiro."
+    }
   },
   "$defs": {
     "vec3": {
@@ -293,6 +298,25 @@
           "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2,
           "description": "[mínimo, máximo] em radianos."
         }
+      }
+    },
+    "refFace": {
+      "type": "object", "required": ["no", "face"], "additionalProperties": false,
+      "description": "Uma face de um nó específico, por id.",
+      "properties": {
+        "no": { "type": "string", "minLength": 1, "description": "Id do nó, na mesma árvore." },
+        "face": { "$ref": "#/$defs/nomeFace" }
+      }
+    },
+    "acoplamento": {
+      "type": "object", "required": ["id", "tipo", "a", "b"], "additionalProperties": false,
+      "description": "`contato`: as duas faces no mesmo plano, normais opostas — uma peça assentada sobre outra. `pivo`: os CENTROS coincidem (não só o plano) e as normais ficam opostas — o eixo de giro é a normal compartilhada. Por convenção (não imposta pelo schema), `a` é a referência/fixo e `b` é o dependente/móvel.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Único entre os acoplamentos da cena." },
+        "tipo": { "enum": ["contato", "pivo"] },
+        "nome": { "type": "string", "description": "Rótulo opcional, só para prosa/leitura humana — não precisa ser único." },
+        "a": { "$ref": "#/$defs/refFace" },
+        "b": { "$ref": "#/$defs/refFace" }
       }
     }
   }

@@ -219,6 +219,35 @@ export interface No<T extends TipoNo = TipoNo> {
 
 export type NoQualquer = No<TipoNo>;
 
+// ── Acoplamentos ─────────────────────────────────────────────────────────
+
+/** `contato`: as duas faces ficam no mesmo plano, com as normais opostas —
+ * uma peça assentada sobre outra. `pivo`: os CENTROS das faces coincidem
+ * (não só o plano) e as normais ficam opostas — o eixo de giro é a normal
+ * compartilhada. Nenhum dos dois POSICIONA nada: são verificados, nunca
+ * resolvidos — ver `Cena.conferirMontagem`. */
+export type TipoAcoplamento = "contato" | "pivo";
+
+/** Uma face de um nó específico, por id — mesma referência por id (não
+ * `NoRef`) que o resto do estado serializado usa. */
+export interface RefFace {
+  no: string;
+  face: NomeFace;
+}
+
+export interface Acoplamento {
+  id: string;
+  tipo: TipoAcoplamento;
+  /** Rótulo opcional — só para prosa (`descrever()`) e leitura humana, não
+   * precisa ser único. */
+  nome?: string;
+  /** Por convenção (não imposta pelo tipo), `a` é a referência/fixo e `b` é
+   * o dependente/móvel — é o que `descrever()` usa para decidir o sujeito
+   * da frase ("`b` gira em torno de `a`"). */
+  a: RefFace;
+  b: RefFace;
+}
+
 // ── Cena serializada ─────────────────────────────────────────────────────
 
 export interface CenaJSON {
@@ -228,4 +257,7 @@ export interface CenaJSON {
   /** Sempre "y" na v1. Um backend Z-up converte na fronteira dele. */
   eixoCima: "y";
   raiz: No;
+  /** Ausente = nenhum acoplamento declarado. Não afeta geometria nem layout
+   * — um backend que só desenha a malha pode ignorar este campo inteiro. */
+  acoplamentos?: Acoplamento[];
 }

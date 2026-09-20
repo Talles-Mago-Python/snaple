@@ -13,6 +13,7 @@ resultante em `THREE.Object3D`.
 ```
 packages/core    estado, bounding box, faces, layout, features, validação, descrever()
 packages/three   backend: core → Three.js
+packages/mcp     servidor MCP (stdio) — expõe core+three como tools pra Claude Code
 spec/            JSON Schema versionado do formato de cena (contrato normativo)
 examples/        exemplos executáveis + viewer web
 tests/           testes unitários do core, sem navegador
@@ -79,7 +80,7 @@ xicara.bbox().min[1] === tampo.bboxPropria().max[1];  // true — sem gap, sem p
 
 Rode com `node examples/mesa.ts`.
 
-## Os cinco conceitos
+## Os seis conceitos
 
 ### 1. O estado é a fonte da verdade, e nunca guarda malha
 
@@ -138,6 +139,93 @@ girado no mundo.
 `colocar` também adota o nó como filho do dono da face — mover a mesa leva a
 xícara junto. Passe `reparentar: false` se não quiser.
 
+Duas opções ajustam esse comportamento padrão: `gap` afasta o alvo da face ao
+longo da normal (em vez de encostar em zero), e `orientar: false` mantém a
+rotação que o alvo já tinha em vez de sobrescrevê-la — a base ainda encosta no
+plano, só a orientação fica por conta de quem chamou:
+
+```ts
+tomada.face("topo").colocar(pino, { gap: 0.002 });        // 2 mm de folga
+suporte.face("leste").colocar(peca, { orientar: false }); // preserva a rotação
+```
+
+#### Face no espaço do mundo
+
+Além do referencial local (usado por `u`/`v`, ver abaixo), toda face sabe se
+posicionar no mundo — útil para comparar duas faces de nós diferentes, em
+qualquer hierarquia e qualquer pose:
+
+```ts
+face.origemMundo(): V3            // centro da face, no mundo
+face.normalMundo(): V3            // normal unitária, no mundo
+face.eixosMundo(): { u: V3; v: V3 } // eixos U/V unitários, no mundo
+```
+
+As três refletem rotação **e** escala não uniforme do dono (e de qualquer
+ancestral), sempre recalculadas a partir de `mundo()` — nunca ficam
+desatualizadas depois de mover, girar ou reparentar algo na cena. É a base de
+[Acoplamentos](#acoplamentos--verificar-não-resolver): dado que ambas as
+faces sabem sua origem e normal no mundo, comparar duas faces de nós
+diferentes é só subtração e produto escalar.
+
+#### Convenção U/V, face a face
+
+Cada face é derivada da AABB da geometria **própria** do dono, no espaço
+**local** dele — não no do mundo. `u`/`v` são sempre coordenadas nesse plano
+local, com origem no centro da face; girar o dono no mundo gira o plano
+inteiro junto, mas não muda o que `u`/`v` significam para quem chama.
+
+```
+                     +y (topo)
+                       │   v=+z
+                       │  ↗
+                       │ ╱
+                       │╱
+        ───────────────┼─────────────── +x (leste)
+                      ╱│                  v=+y, u=+z
+                     ╱ │
+              -z    ╱  │
+            (norte)╱   │
+                       -y (base)
+```
+
+| face    | normal | eixo U | eixo V |
+|---|---|---|---|
+| `topo`  | `+y` | `+x` | `+z` |
+| `base`  | `-y` | `+x` | `-z` |
+| `leste` | `+x` | `+z` | `+y` |
+| `oeste` | `-x` | `-z` | `+y` |
+| `sul`   | `+z` | `-x` | `+y` |
+| `norte` | `-z` | `+x` | `+y` |
+
+Cada linha satisfaz `normal = V × U` (destro, sem espelhamento): colocar um
+nó numa face mapeia o `+x` local dele em U, o `+y` local em **normal** e o
+`+z` local em V. É por isso que **o `+y` local do nó colocado é o que aponta
+para fora da face** (seção anterior) e por isso que um furo ou uma
+distribuição em `leste`/`oeste` correm ao longo do `+z`/`+y` do dono, não do
+`+x`/`+y` do mundo.
+
+Prova disso rodada de verdade (não só na teoria): colocar um cubo de 2 cm em
+cada uma das seis faces de um cubo de 20 cm com `{u: 0.02, v: 0}` desloca o
+alvo, em relação ao centro do dono, assim:
+
+| face | normal local | eixo U local | delta mundo (x, y, z) para `u=+0.02` |
+|---|---|---|---|
+| `topo`  | `0,1,0`   | `1,0,0`  | `0.02, 0.11, 0` |
+| `base`  | `0,-1,0`  | `1,0,0`  | `0.02, -0.11, 0` |
+| `norte` | `0,0,-1`  | `1,0,0`  | `0.02, 0, -0.11` |
+| `sul`   | `0,0,1`   | `-1,0,0` | `-0.02, 0, 0.11` |
+| `leste` | `1,0,0`   | `0,0,1`  | `0.11, 0, 0.02` |
+| `oeste` | `-1,0,0`  | `0,0,-1` | `-0.11, 0, -0.02` |
+
+(`0.11` = meia-aresta do dono, `0.1`, mais meia-aresta do alvo, `0.01` — a
+"encostar exatamente" da seção anterior; `0.02` é exatamente o `u` pedido, no
+eixo U de cada face.) Repetindo o mesmo `{u: 0.05, v: 0.03}` na face `leste`
+de um dono girado 90° em Y no mundo, o resultado é `delta = (0.05, 0.03,
+-0.11)`: `u` e `v` continuam batendo com o eixo U/V **local** do dono (que a
+rotação levou para outro lugar no mundo), não com X/Z do mundo — exatamente a
+garantia que o parágrafo acima descreve.
+
 ### 4. Layout declarativo, com vocabulário de CSS de propósito
 
 Containers sem geometria própria, só organizam filhos: `row` (eixo X),
@@ -195,6 +283,58 @@ construção — o campo `face` só aceita os seis nomes.
 
 CSG é ponto de extensão futuro e **não** está implementado.
 
+### 6. `extrude` com `recentrar: false`, e `helix`
+
+Por padrão, `extrude` recentra o perfil na própria bounding box antes de
+extrudar — é a invariante de geometria centrada na origem local, da seção 2.
+Às vezes esse recentro atrapalha: quando o perfil já foi desenhado num
+sistema de coordenadas próprio, com um ponto de referência que precisa
+continuar sendo a origem do nó (por exemplo, várias peças pensadas para se
+encaixar por esse ponto comum). `recentrar: false` usa o perfil como está,
+sem deslocar — o eixo de extrusão (`y`) continua sempre centrado, só o plano
+`(x, z)` do perfil fica descentrado se o perfil for assimétrico:
+
+```ts
+cena.criar("extrude", {
+  perfil: [[1, 2], [1.6, 2], [1.3, 2.5]], // longe da origem, de propósito
+  altura: 0.4,
+  recentrar: false,
+}); // bbox local não passa mais por -h..+h; é o footprint real do perfil
+```
+
+`helix` é uma peça nova: um tubo de seção circular varrendo um caminho
+helicoidal em torno do eixo `+y` local — o mesmo eixo de `cylinder`/`lathe`,
+já centrado (`y` vai de `-passo·voltas/2` a `+passo·voltas/2`). Serve para
+mola, rosca de parafuso, cabo espiralado — qualquer coisa que seja
+"circular, mas subindo":
+
+```ts
+cena.criar("helix", { raio: 0.02, raioTubo: 0.003, passo: 0.01, voltas: 6 });
+```
+
+A bbox é **analítica**, sem tocar em malha: no plano `(x, z)` o tubo nunca
+passa de `raio + raioTubo` do eixo; em `y`, a trajetória cobre
+`passo × voltas`, mas as duas pontas **abertas** do tubo (não é um anel
+fechado) podem ir além disso — a "tampa" de cada ponta é perpendicular à
+tangente da hélice, não ao eixo `y`, e no limite de passo raso (quase um
+anel achatado, o caso `mola` com voltas curtas) esse excesso tende ao
+`raioTubo` inteiro. Por isso a meia-altura declarada soma essa margem
+(`passo·voltas/2 + raioTubo`): é o que garante que a malha real sempre
+**cabe** dentro da bbox que o core calculou, confirmado contra a malha real
+do backend (`TubeGeometry` sobre uma curva helicoidal) em
+`tests/backend.test.ts` — não é só teoria, é testado.
+
+Backend: `TubeGeometry` do Three.js sobre uma `Curve` parametrizada pela
+mesma fórmula da bbox. Nenhum furo é suportado em `helix` (mesma família de
+`sphere`/`cone`/`torus`/`lathe`: não é a extrusão de um perfil 2D num só
+eixo, furar exigiria CSG).
+
+`helix` é o primeiro caso de **varredura ao longo de um caminho** que o core
+suporta — hoje só um caminho helicoidal fixo. Um `sweep` genérico (perfil 2D
+arbitrário varrendo uma curva arbitrária) é a extensão natural futura; quando
+existir, `helix` deve virar um caso particular dele, sem quebrar o formato de
+cena atual.
+
 ## Objetos importados: `model`
 
 ```ts
@@ -220,6 +360,55 @@ AVISO: um e dois têm praticamente o mesmo centro (0.0050 m de distância) — p
 São **sempre avisos, nunca bloqueios**: interpenetração pode ser deliberada
 (um prego cravado numa tábua) e a lib não tem como saber. Pares pai/filho são
 ignorados na detecção de interpenetração.
+
+## Acoplamentos — verificar, não resolver
+
+Um acoplamento declara uma relação entre duas faces de dois nós — "esta roda
+gira em torno deste eixo", "esta chapa está assentada sobre esta bandeja" —
+como estado de primeira classe da cena, não como um cálculo feito uma vez e
+esquecido. Guardado, serializado e **conferível a qualquer momento, em
+qualquer pose**:
+
+```ts
+const pivo = cena.acoplar({
+  tipo: "pivo",
+  nome: "ombro",
+  a: { no: base, face: "topo" },
+  b: { no: braco, face: "base" },
+});
+
+braco.girar([0, Math.PI / 3, 0]); // articula livremente — layout continua vindo de colocar()
+
+const relatorio = cena.conferirMontagem();
+relatorio.passou;              // true/false
+relatorio.piorCaso;            // { erroPosicao, erroAngulo, nos, ... } — o pior dos dois
+```
+
+Dois tipos nesta versão:
+
+- **`contato`**: as duas faces no mesmo plano, normais opostas — uma peça
+  assentada sobre a outra. Erro = distância ao longo da normal (fora do
+  plano).
+- **`pivo`**: os **centros** coincidem (não só o plano), normais opostas — o
+  eixo de giro é a normal compartilhada. Erro = distância entre os centros.
+
+Nos dois casos o erro de posição (metros) e o erro angular (radianos, desvio
+das normais em relação a exatamente opostas) saem **separados** no
+relatório, por acoplamento e no pior caso — misturar as duas unidades numa
+soma só esconderia qual delas realmente quebrou.
+
+**Acoplamentos são verificados, não resolvidos.** `acoplar` não move nada;
+quem posiciona continua sendo `colocar`, os containers de layout e as
+fórmulas do seu modelo. Isso mantém o sistema previsível: layout é sempre
+uma função direta dos parâmetros, nunca a saída de um solver iterativo.
+
+Um par acoplado deixa de contar como interpenetração ou flutuação no linter
+(a relação declarada já é a explicação de por que eles se tocam ou por que
+um não tem nada "embaixo"), e ganha um aviso próprio,
+`acoplamento-violado`, se a relação deixar de valer na pose atual — mesma
+regra do resto do linter: é aviso, nunca bloqueio. `descrever()` também narra
+cada acoplamento em prosa: *"O braço gira em torno do pivô do ombro."*,
+*"A bateria está assentada sobre a chapa."*
 
 ## `descrever()` — a cena em prosa
 

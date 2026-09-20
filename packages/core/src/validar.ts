@@ -6,6 +6,7 @@
  * formas: array estruturado (para código) e texto (para um LLM ler). */
 import { sobreposicao, sobrepoeNoPlano } from "./bbox.ts";
 import { type OBB, obbDoNo, obbsSeSobrepoem } from "./obb.ts";
+import { erroDoAcoplamento } from "./acoplamento.ts";
 import { saoParentes } from "./mundo.ts";
 import { percorrer } from "./no.ts";
 import type { Cena } from "./cena.ts";
@@ -62,9 +63,17 @@ export interface AvisoJuntaForaDoLimite extends AvisoBase {
   limites: [number, number];
 }
 
+export interface AvisoAcoplamentoViolado extends AvisoBase {
+  tipo: "acoplamento-violado";
+  acoplamento: string;
+  nos: [string, string];
+  erroPosicao: number;
+  erroAngulo: number;
+}
+
 export type Aviso =
   | AvisoInterpenetracao | AvisoFlutuando | AvisoCentrosCoincidentes
-  | AvisoContatoIntencional | AvisoJuntaForaDoLimite;
+  | AvisoContatoIntencional | AvisoJuntaForaDoLimite | AvisoAcoplamentoViolado;
 
 function emGraus(rad: number): string {
   return `${arred((rad * 180) / Math.PI, 1)}°`;
@@ -77,6 +86,11 @@ const NOME_EIXO: readonly Eixo[] = ["x", "y", "z"];
 function contatoPermitido(a: { no: { id: string; validacao?: { contatoIntencional?: string[] } } }, b: typeof a): boolean {
   return !!a.no.validacao?.contatoIntencional?.includes(b.no.id)
     || !!b.no.validacao?.contatoIntencional?.includes(a.no.id);
+}
+
+/** Chave estável de um par de ids, independente da ordem. */
+function chaveDoPar(a: string, b: string): string {
+  return a < b ? `${a} ${b}` : `${b} ${a}`;
 }
 
 export function avisosDaCena(cena: Cena): Aviso[] {
@@ -92,10 +106,24 @@ export function avisosDaCena(cena: Cena): Aviso[] {
     if (obb) obbs.set(m.no.id, obb);
   }
 
+  // Pares (e nós) com um acoplamento contato/pivo entre si: mesma ideia de
+  // `saoParentes` para pai/filho — a relação já é a declaração explícita de
+  // que o contato/a articulação é intencional, então interpenetração e
+  // flutuação entre eles não são erro de modelagem.
+  const paresAcoplados = new Set<string>();
+  const nosComAcoplamento = new Set<string>();
+  for (const ac of cena.acoplamentos()) {
+    if (ac.tipo !== "contato" && ac.tipo !== "pivo") continue;
+    paresAcoplados.add(chaveDoPar(ac.a.no, ac.b.no));
+    nosComAcoplamento.add(ac.a.no);
+    nosComAcoplamento.add(ac.b.no);
+  }
+
   for (let i = 0; i < nos.length; i++) {
     for (let j = i + 1; j < nos.length; j++) {
       const a = nos[i]!, b = nos[j]!;
       if (saoParentes(mundo, a.no.id, b.no.id)) continue;
+      if (paresAcoplados.has(chaveDoPar(a.no.id, b.no.id))) continue;
       const ca = a.propria!, cb = b.propria!;
       const s = sobreposicao(ca, cb);
       const sobrepoeAABB = s[0]! > TOL_CONTATO && s[1]! > TOL_CONTATO && s[2]! > TOL_CONTATO;
@@ -146,6 +174,7 @@ export function avisosDaCena(cena: Cena): Aviso[] {
   for (const m of nos) {
     const caixa = m.propria!;
     if (caixa.min[1]! <= TOL_CHAO) continue;
+    if (nosComAcoplamento.has(m.no.id)) continue; // apoio/articulação já declarados
     const temApoio = nos.some((outro) => {
       if (outro.no.id === m.no.id) return false;
       const c = outro.propria!;
@@ -176,6 +205,20 @@ export function avisosDaCena(cena: Cena): Aviso[] {
         angulo: p.angulo,
         limites: p.limites,
         texto: `${no.id}: ângulo ${emGraus(p.angulo)} fora do limite [${emGraus(min)}, ${emGraus(max)}]`,
+      });
+    }
+  }
+
+  for (const ac of cena.acoplamentos()) {
+    const { erroPosicao, erroAngulo } = erroDoAcoplamento(cena, ac);
+    if (erroPosicao > TOL_CONTATO || erroAngulo > TOL_CONTATO) {
+      avisos.push({
+        tipo: "acoplamento-violado",
+        acoplamento: ac.id,
+        nos: [ac.a.no, ac.b.no],
+        erroPosicao, erroAngulo,
+        texto: `${ac.tipo} '${ac.id}'${ac.nome ? ` (${ac.nome})` : ""} entre ${ac.a.no} e ${ac.b.no}: ` +
+          `${fmt(erroPosicao)} m de posição, ${emGraus(erroAngulo)} de ângulo`,
       });
     }
   }

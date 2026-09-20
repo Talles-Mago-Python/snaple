@@ -19,7 +19,10 @@ export * from "./face.ts";
 export * from "./geometria.ts";
 export * from "./validar.ts";
 export * from "./descrever.ts";
-export { Cena, NoRef, ID_RAIZ, aabbNoEspacoDe, type AlvoNo, type OpcoesCriar } from "./cena.ts";
+export { Cena, NoRef, AcoplamentoRef, ID_RAIZ, aabbNoEspacoDe, type AlvoNo, type OpcoesCriar } from "./cena.ts";
+export {
+  erroDoAcoplamento, type ErroDoAcoplamento, type ErroAcoplamento, type RelatorioMontagem,
+} from "./acoplamento.ts";
 export {
   colocarSobre, encostar, alinhar, centralizarEm, empilhar, distribuir,
   circular, envelope,
