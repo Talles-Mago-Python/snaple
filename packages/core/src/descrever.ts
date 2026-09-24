@@ -8,6 +8,7 @@ import { type AABB, unirAABB } from "./bbox.ts";
 import { type NoMundo } from "./mundo.ts";
 import { percorrer } from "./no.ts";
 import { TOL_CONTATO } from "./validar.ts";
+import { duracaoDe } from "./animacao.ts";
 import type { Cena } from "./cena.ts";
 import type { No, ParamsJunta, TipoNo } from "./tipos.ts";
 import { type Vec3, arred } from "./vetor.ts";
@@ -15,7 +16,7 @@ import { type Vec3, arred } from "./vetor.ts";
 const SUBSTANTIVO: Partial<Record<TipoNo, string>> = {
   box: "caixa", sphere: "esfera", cylinder: "cilindro", cone: "cone",
   plane: "plano", torus: "torus", extrude: "peça", lathe: "peça torneada",
-  helix: "hélice", model: "modelo", junta: "junta",
+  helix: "hélice", sweep: "tubo", model: "modelo", junta: "junta",
 };
 
 function emGraus(rad: number): string {
@@ -301,6 +302,22 @@ export function descreverCena(cena: Cena): string {
         `${artigoDefinido(rotuloA)} ${rotuloA}.`,
       );
     }
+  }
+
+  // Animações: uma frase por animação, dizendo o que se move — o detalhe
+  // dos quadros está no JSON; aqui é o resumo para conferir a intenção.
+  const NOME_PROPRIEDADE: Record<string, string> = {
+    posicao: "posição", rotacao: "rotação", escala: "escala", angulo: "ângulo", opacidade: "opacidade", cor: "cor",
+  };
+  const REPETICAO: Record<string, string> = { nao: "uma vez", sempre: "em loop", vaivem: "vai e volta" };
+  for (const a of cena.animacoes()) {
+    const porNo = new Map<string, string[]>();
+    for (const f of a.faixas) porNo.set(f.no, [...(porNo.get(f.no) ?? []), NOME_PROPRIEDADE[f.propriedade]!]);
+    const partes = [...porNo].map(([id, props]) => `${rotuloDe(cena.no(id))} (${props.join(", ")})`);
+    frases.push(
+      `Animação "${a.nome}" (${arred(duracaoDe(a), 2)} s, ${REPETICAO[a.repetir ?? "nao"]}): ` +
+      `${partes.length ? `anima ${partes.join("; ")}` : "sem faixas"}.`,
+    );
   }
 
   const avisos = cena.avisos();

@@ -13,10 +13,11 @@
  * A AABB de um nó rotacionado é a caixa alinhada aos eixos que ENVOLVE a
  * geometria girada ("inflada"), não uma OBB exata. */
 import { type Mat4, aplicarPonto } from "./matriz.ts";
+import { caixaDoCaminhoCru, resolverVarredura } from "./varredura.ts";
 import { type Vec3, type Ponto2D, type IndiceEixo, num, EPS } from "./vetor.ts";
 import type {
   No, TipoNo, ParamsBox, ParamsSphere, ParamsCylinder, ParamsCone,
-  ParamsPlane, ParamsTorus, ParamsExtrude, ParamsLathe, ParamsHelix, ParamsModel,
+  ParamsPlane, ParamsTorus, ParamsExtrude, ParamsLathe, ParamsHelix, ParamsModel, ParamsSweep,
 } from "./tipos.ts";
 
 export interface AABB {
@@ -149,6 +150,10 @@ export function meiaExtensaoLocal(no: No): Vec3 | null {
       const alturaTotal = Math.abs(num(q.passo, 0.05)) * num(q.voltas, 1);
       return [alcanceXZ, alturaTotal / 2 + raioTubo, alcanceXZ];
     }
+    case "sweep": {
+      const c = caixaDoSweep(p as unknown as ParamsSweep);
+      return [(c.max[0] - c.min[0]) / 2, (c.max[1] - c.min[1]) / 2, (c.max[2] - c.min[2]) / 2];
+    }
     case "model": {
       const t = (p as unknown as ParamsModel).tamanho ?? [1, 1, 1];
       return [num(t[0], 1) / 2, num(t[1], 1) / 2, num(t[2], 1) / 2];
@@ -186,7 +191,23 @@ export interface CaixaLocal { min: Vec3; max: Vec3 }
  * min/max em vez de meia-extensão, o que permite representar geometria
  * DESCENTRADA da origem — hoje só `extrude` com `recentrar: false` usa isso.
  * Para todo o resto, `min = -max` (a mesma caixa simétrica de sempre). */
+/** Caixa exata dos vértices do `sweep` (ver `varredura.ts`). Com params
+ * inválidos, cai para a caixa dos pontos do caminho em vez de lançar: um
+ * `sweep` quebrado não pode derrubar o layout da cena inteira — o erro
+ * aparece ao derivar a geometria dele. */
+function caixaDoSweep(p: ParamsSweep): CaixaLocal {
+  try {
+    const r = resolverVarredura(p);
+    return { min: r.min, max: r.max };
+  } catch {
+    return caixaDoCaminhoCru(p);
+  }
+}
+
 export function caixaLocalPropria(no: No): CaixaLocal | null {
+  // o `sweep` é descentrado quando `recentrar: false`, e mesmo recentrado a
+  // caixa exata vem pronta de `varredura.ts`
+  if (no.tipo === "sweep") return caixaDoSweep(no.params as ParamsSweep);
   if (no.tipo === "extrude" && (no.params as ParamsExtrude).recentrar === false) {
     const q = no.params as ParamsExtrude;
     const { meio, centro } = extensaoPerfil(q.perfil ?? []);

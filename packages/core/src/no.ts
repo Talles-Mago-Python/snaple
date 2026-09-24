@@ -5,7 +5,7 @@ import type {
 import { type Vec3, indiceDoEixo } from "./vetor.ts";
 
 export const TIPOS_NO: readonly TipoNo[] = [
-  "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix",
+  "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix", "sweep",
   "model", "grupo", "row", "column", "stack", "junta",
 ];
 
@@ -84,13 +84,31 @@ export function criarNo<T extends TipoNo>(
 
 /** Percorre a árvore em pré-ordem, dando o nó e o pai (null na raiz). */
 export function* percorrer(raiz: No, pai: No | null = null): Generator<{ no: No; pai: No | null }> {
-  yield { no: raiz, pai };
-  for (const filho of raiz.filhos) yield* percorrer(filho, raiz);
+  // pilha explícita em vez de `yield*` recursivo: cada nível de `yield*`
+  // repassa o valor por todos os geradores ancestrais, o que custava
+  // O(profundidade) por nó visitado
+  const pilha: { no: No; pai: No | null }[] = [{ no: raiz, pai }];
+  while (pilha.length) {
+    const atual = pilha.pop()!;
+    yield atual;
+    const filhos = atual.no.filhos;
+    for (let i = filhos.length - 1; i >= 0; i--) pilha.push({ no: filhos[i]!, pai: atual.no });
+  }
 }
 
 export function encontrar(raiz: No, id: string): No | null {
   for (const { no } of percorrer(raiz)) if (no.id === id) return no;
   return null;
+}
+
+/** Índice `id → { nó, pai }` de toda a subárvore de `raiz`. */
+export function indexar(
+  raiz: No,
+  pai: No | null = null,
+  indice = new Map<string, { no: No; pai: No | null }>(),
+): Map<string, { no: No; pai: No | null }> {
+  for (const entrada of percorrer(raiz, pai)) indice.set(entrada.no.id, entrada);
+  return indice;
 }
 
 export function clonarNo(no: No): No {

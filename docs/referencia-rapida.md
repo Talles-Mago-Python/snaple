@@ -1,5 +1,9 @@
 # Referência rápida — snaple para quem só escreve código
 
+Nunca usou o snaple? Comece por
+[`primeiros-passos.md`](primeiros-passos.md) — esta página aqui é consulta,
+não tutorial.
+
 Lista de consulta para escrever `.ts` contra `@snaple/core` **sem poder
 rodar nada** (sem terminal, sem MCP, sem viewer) — só o texto do código
 importa. Não é tutorial: é a lista de tipos, assinaturas e convenções para
@@ -22,7 +26,7 @@ calculada à mão pode, e ninguém vai rodar o linter para pegar o erro.
 | Eixo vertical | **+y** (Y-up), sistema destro |
 | Direções | `+x` leste · `-x` oeste · `+z` sul · `-z` norte |
 | Rotação | Euler XYZ intrínseca, em **radianos** (nunca graus) |
-| Origem de cada geometria | centrada nela mesma (exceto `extrude` com `recentrar: false`) |
+| Origem de cada geometria | centrada nela mesma (exceto `extrude`/`lathe` com `recentrar: false`) |
 
 ## Import e esqueleto de arquivo
 
@@ -54,6 +58,8 @@ no.criar(tipo, params, opcoes?)   => NoRef   // cria como FILHO de `no`
   nome?: string;                 // rótulo p/ descrever() — "mesa", "xícara"
   transform?: { posicao?: [x,y,z]; rotacao?: [x,y,z]; escala?: [x,y,z] };
   material?: Material;
+  features?: Feature[];          // furos já na criação (normalmente se usa no.furar)
+  validacao?: { contatoIntencional?: string[] };  // ver no.permitirContato
   pai?: string | NoRef;          // só em cena.criar; no.criar já é filho de `no`
 }
 ```
@@ -72,25 +78,178 @@ opcionais.
 | `plane` | `{ largura, profundidade }` | plano XZ, normal `+y`, espessura zero |
 | `torus` | `{ raio, raioTubo, segmentos?, segmentosTubo? }` | anel deitado, eixo `+y` |
 | `extrude` | `{ perfil: [x,z][], altura, recentrar? }` | perfil fechado no plano XZ, extrudado em `+y`; `recentrar` padrão `true` |
-| `lathe` | `{ perfil: [raio,altura][], segmentos? }` | perfil revolucionado em torno de `+y` |
+| `lathe` | `{ perfil: [raio,altura][], segmentos?, recentrar? }` | perfil revolucionado em torno de `+y`; `recentrar` padrão `true` (`false` mantém as alturas do perfil) |
 | `helix` | `{ raio, raioTubo, passo, voltas, segmentosPorVolta?, segmentosTubo? }` | tubo espiralado em `+y`; `passo` = avanço em y por volta |
+| `sweep` | `{ caminho: [x,y,z][], secao, suavizar?, raioCurva?, fechado?, cima?, segmentos?, recentrar? }` | seção varrendo um caminho — ver [`sweep`](#sweep-fios-canos-e-perfis) |
 | `model` | `{ src, tamanho: [x,y,z] }` | referência externa; `tamanho` é a bbox DECLARADA (o layout usa isso, não abre o arquivo) |
 | `grupo` | `{}` | container sem eixo, sem geometria própria |
 | `row` | `{ extensao?, gap?, justify?, align? }` | container flex, eixo X |
 | `column` | `{ extensao?, gap?, justify?, align? }` | container flex, eixo Y |
 | `stack` | `{ extensao?, gap?, justify?, align? }` | container flex, eixo Z |
+| `junta` | `{ eixo: "x"\|"y"\|"z", angulo, limites?: [min, max] }` | container sem geometria; a rotação vem de `angulo` (radianos), não de `transform.rotacao`; mude a pose com `definirParams` |
 
 `justify`: `"start" \| "center" \| "end" \| "space-between" \| "space-around" \| "space-evenly"`
 `align`: `"start" \| "center" \| "end"`
 
+## `sweep`: fios, canos e perfis
+
+Uma seção 2D varrendo um caminho 3D. Os pontos de `caminho` estão no espaço
+local do nó.
+
+| como ligar os pontos | params | serve para |
+|---|---|---|
+| canto vivo, cortado em meia-esquadria (padrão) | — | metalon, quadro soldado, moldura |
+| dobra em arco no canto | `raioCurva: r` | cano dobrado, eletroduto |
+| curva suave passando por todos os pontos | `suavizar: true` | fio, cabo, mangueira |
+
+```ts
+secao:
+  | { tipo: "circulo"; raio; segmentos?; espessura? }     // espessura → cano oco
+  | { tipo: "retangulo"; largura; altura; espessura? }    // espessura → metalon
+  | { tipo: "poligono"; pontos: [s, t][] }                // perfilL/U/I/T, ou qualquer contorno
+```
+
+- A seção fica no plano `(s, t)` de cada ponto do caminho: `s` à **direita**
+  de quem anda pelo caminho, `t` para `cima` (padrão `[0, 1, 0]`, só vale no
+  primeiro ponto). Dali em diante a seção acompanha o caminho **sem torcer**.
+- `circulo`/`retangulo` ficam centrados no caminho. Em `poligono`, o caminho
+  passa pela origem `(0, 0)` dos pontos. `perfilL`, `perfilU`, `perfilI` e
+  `perfilT` (de `@snaple/core`) devolvem perfis centrados na própria bbox.
+- `fechado: true` liga o último ponto ao primeiro (anel, moldura). Sem isso,
+  as pontas são tampadas.
+- `segmentos` (padrão 12): subdivisões por vão suave ou por dobra de 90°.
+- `recentrar: false` mantém o caminho nas coordenadas dadas. É o natural para
+  um fio ligando pontos conhecidos do pai: crie o nó na origem do pai e passe
+  os pontos no referencial dele.
+- A bbox é **exata**: é a caixa dos próprios vértices da malha.
+- Erros claros ao derivar a geometria: `raioCurva` que não cabe entre dois
+  pontos, caminho que volta sobre si mesmo (180°), `espessura` grande demais.
+  O layout não quebra por isso (a bbox cai para a dos pontos do caminho), e o
+  backend avisa com `geometria-falhou`.
+- Não aceita furo (`geometria-nao-extrudavel`).
+
+```ts
+import { perfilL } from "@snaple/core";
+
+// quadro de metalon 30×30, parede 1,5 mm, 1 m × 0,6 m, em pé no plano XY
+cena.criar("sweep", {
+  caminho: [[0, 0, 0], [1, 0, 0], [1, 0.6, 0], [0, 0.6, 0]], fechado: true, cima: [0, 0, 1],
+  secao: { tipo: "retangulo", largura: 0.03, altura: 0.03, espessura: 0.0015 },
+});
+// cano de 3/4" dobrado com raio de 8 cm
+cena.criar("sweep", {
+  caminho: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.4, 0]], raioCurva: 0.08,
+  secao: { tipo: "circulo", raio: 0.0133, espessura: 0.002 },
+});
+// cabo de 6 mm passando por três pontos, no referencial do pai
+gabinete.criar("sweep", {
+  caminho: [[0.1, 0.05, 0], [0.2, 0.15, 0.05], [0.35, 0.1, 0.1]], suavizar: true, recentrar: false,
+  secao: { tipo: "circulo", raio: 0.003 },
+});
+// cantoneira 1½" × 1/8" de 2 m
+cena.criar("sweep", {
+  caminho: [[0, 0, 0], [2, 0, 0]], secao: { tipo: "poligono", pontos: perfilL(0.038, 0.038, 0.003) },
+});
+```
+
 ## `Material`
 
 ```ts
-{ cor?: string; metalico?: number; rugosidade?: number; opacidade?: number; aramado?: boolean }
+{
+  cor?: string; metalico?: number; rugosidade?: number; opacidade?: number; aramado?: boolean;
+  facetado?: boolean;
+  emissivo?: { cor: string; intensidade?: number };
+  textura?: { src: string; repetir?: [u, v]; rotacao?: number };
+}
 ```
 
 `cor` é CSS (`"#8b5a2b"`). `metalico`/`rugosidade`/`opacidade` em `[0, 1]`.
-`aramado: true` renderiza wireframe. Nenhum campo é obrigatório.
+`aramado: true` renderiza wireframe. `facetado: true` sombreia cada face com
+uma cor só, inclusive em `sphere`/`cone`/`lathe` (visual low poly, ver
+[`guia-low-poly.md`](guia-low-poly.md)). `emissivo` é cor própria, que não
+depende de luz (um LED, um mostrador aceso); `intensidade` padrão 1. Nenhum
+campo é obrigatório.
+
+`textura` repete uma imagem pela peça inteira (madeira, tecido, chapa). Cada
+face plana e cada superfície curva vão de 0 a 1 em (u, v); `repetir: [3, 1]`
+repete 3 vezes em u. A cor multiplica a imagem (com textura, a cor padrão é
+branca). Para uma imagem numa **região** da peça, use adesivo.
+
+## Adesivo — imagem numa região da peça (inclusive superfície curva)
+
+```ts
+no.colarAdesivo({ src, face, u?, v?, largura?, altura?, rotacao? }) => NoRef
+no.limparAdesivos() => NoRef
+```
+
+- **Face plana** (`topo`, `sul`, ...): `u`/`v` são o centro no plano da face,
+  com a mesma convenção de `furar`/`colocar`; `largura`/`altura` em metros;
+  sem tamanho, cobre a face inteira. A imagem sai **legível vista de fora**:
+  topo da imagem para `+y` nas faces verticais, para o norte (`−z`) em
+  `topo`/`base`. `rotacao` gira a imagem no plano.
+- **`face: "lateral"`** (`cylinder`, `cone`, `lathe`): `u` é o **ângulo** do
+  centro (0 = `+z`, crescendo para `+x`, a mesma convenção de `lateral()`), `v`
+  é a **altura** do centro, `largura` é o arco em metros medido naquela
+  altura, `altura` em metros. Sem tamanho, dá a volta inteira. Numa peça oca
+  (caneca), fica na parede de fora.
+- Faces planas por tipo: `box` todas; `plane`, `extrude`, `cylinder` só
+  `topo`/`base`; `cone` só `base`. Face que o tipo não tem vira erro.
+- É aparência: não entra em bbox, layout nem linter.
+
+```ts
+lata.colarAdesivo({ src: "texturas/rotulo.png", face: "lateral", altura: 0.1 });
+monitor.colarAdesivo({ src: "texturas/tela.png", face: "sul", largura: 0.47, altura: 0.27 });
+caneca.colarAdesivo({ src: "texturas/logo.png", face: "lateral", u: 0, largura: 0.05, altura: 0.05 });
+```
+
+`src` é resolvido pelo backend. No viewer (`examples/web`), arquivos em
+`examples/web/public/` são servidos na raiz, então `public/texturas/x.png`
+vira `src: "texturas/x.png"`.
+
+## Animação — quadros-chave guardados na cena
+
+```ts
+cena.animar(nome, { duracao?, repetir?: "nao" | "sempre" | "vaivem" }) => AnimacaoRef
+  .faixa(no, propriedade, [[t, valor], ...], { interpolacao?, relativo? }) => AnimacaoRef
+cena.poseEm(nome, t) => Cena                    // a cena inteira no instante t (cópia)
+cena.conferirAnimacao(nome, { amostras? }) => { t, avisos }[]
+cena.conferirAnimacaoTexto(nome) => string      // vazio = nenhum problema novo
+cena.animacoes() / cena.animacao(nome) / cena.removerAnimacao(nome)
+```
+
+| propriedade | valor | observação |
+|---|---|---|
+| `posicao` / `escala` | `[x, y, z]` | espaço do pai |
+| `rotacao` | `[x, y, z]` rad | interpola pelo **menor arco** entre os quadros |
+| `angulo` | número (rad) | só em `junta`; interpola o próprio ângulo — é o que gira mais de meia volta |
+| `opacidade` | `0..1` | |
+| `cor` | `"#rrggbb"` | interpola em RGB |
+
+- `t` em segundos, estritamente crescente. Antes do primeiro quadro vale o
+  primeiro; depois do último, o último. `duracao` padrão = último quadro.
+- `interpolacao`: `linear` (padrão), `suave` (acelera e desacelera) ou
+  `degrau` (segura o valor até o próximo quadro).
+- `relativo: true`: valores relativos à pose atual do nó — somados
+  (`posicao`, `angulo`), multiplicados (`escala`), compostos no referencial do
+  nó (`rotacao`). Ex.: gaveta abre `[0, 0, 0.3]`.
+- `conferirAnimacao` roda o linter ao longo do movimento e mostra só o que a
+  cena parada não tem: peça atravessando outra, junta passando do limite.
+- `remover` um nó tira as faixas dele. `reparentar` não converte os valores:
+  `posicao`/`rotacao` continuam no espaço do pai NOVO.
+
+```ts
+const dobradica = caixa.criar("junta", { eixo: "x", angulo: 0, limites: [-1.9, 0] },
+  { transform: { posicao: [0, 0.05, -0.07] } });
+dobradica.criar("box", { largura: 0.2, altura: 0.008, profundidade: 0.14 },
+  { transform: { posicao: [0, 0.004, 0.07] } });
+cena.animar("abrir", { repetir: "vaivem" })
+  .faixa(dobradica, "angulo", [[0, 0], [1.5, -1.3]], { interpolacao: "suave" });
+console.log(cena.conferirAnimacaoTexto("abrir") || "ok");
+```
+
+No viewer, as animações aparecem num seletor com pausa, e o `.glb`
+exportado leva os clipes (só as faixas de transformação: glTF não anima
+material). Um exemplo completo está em `examples/web/modelos/vitrine.ts`.
 
 ## Métodos de `NoRef` (o que volta de `criar()`)
 
@@ -106,6 +265,7 @@ no.definirParams({ ... })              // sobrescreve params parcialmente
 no.furar({ face, forma, u, v, profundidade? })   // ver seção Furo
 no.atualizarFuro(indice, { ... })      // edita um furo já existente
 no.limparFuros()
+no.permitirContato(outro)              // sobreposição com `outro` deixa de ser aviso de interpenetração
 no.bbox()                              // AABB de mundo, com subárvore
 no.bboxPropria()                       // AABB de mundo, só a geometria própria
 no.remover()
@@ -231,16 +391,18 @@ no.furar({
 }) => NoRef   // this, encadeável
 ```
 
-Só funciona em geometria extrudável (`box`, `extrude`, `cylinder` com
-`raioTopo === raioBase`, `lathe` fechado no eixo certo). Falha **alto** (lança
-erro, não corta silenciosamente) se: nó não-extrudável, furos em faces de
-normais diferentes no mesmo nó, furo maior que a peça, furo cujo volume
-atravessa outro nó. Nunca use furo para simular CSG arbitrário — não existe.
+Só funciona em geometria extrudável: `box` (qualquer face), e `cylinder`
+com `raioTopo === raioBase`, `plane` e `extrude` só pelas faces `topo`/`base`
+(eixo y). `sphere`, `cone`, `torus`, `lathe`, `helix`, `sweep` e tronco de cone não
+aceitam furo (`geometria-nao-extrudavel`). Falha **alto** (lança
+`ErroFeature`, não corta silenciosamente) se: nó não-extrudável, furos em
+faces de normais diferentes no mesmo nó, furo maior que a peça, furo cujo
+volume atravessa outro nó, furo em `model`. Nunca use furo para simular CSG arbitrário — não existe.
 
 ## Serialização
 
 ```ts
-cena.toJSON() => { version: 1, unidade: "m", eixoCima: "y", raiz: No }
+cena.toJSON() => { version: 1, unidade: "m", eixoCima: "y", raiz: No, acoplamentos?, animacoes? }
 Cena.deJSON(json) => Cena
 ```
 
@@ -253,8 +415,11 @@ cena.descrever() => string        // a cena inteira em prosa (relações + aviso
 ```
 
 São sempre **avisos**, nunca erro/exceção: interpenetração pode ser
-deliberada, a lib não julga. Quatro tipos: `interpenetracao`, `flutuando`,
-`centros-coincidentes`, `acoplamento-violado` (ver seção seguinte).
+deliberada, a lib não julga. Seis tipos: `interpenetracao`, `flutuando`,
+`centros-coincidentes`, `junta-fora-do-limite`, `acoplamento-violado` (ver
+seção seguinte) e `contato-intencional`. Este último não é problema: marca
+uma sobreposição declarada com `no.permitirContato(outro)`, só aparece em
+`avisos()` e fica de fora de `avisosTexto()`.
 
 ## Acoplamentos (`contato`/`pivo`) — relação declarada, conferida sob demanda
 
@@ -378,4 +543,4 @@ export function montarCena(): Cena {
   acima) — sem poder rodar o linter, esse é o erro que mais passa
   despercebido.
 - Materiais com campo de Three.js (`emissive`, `map`, etc.) — o `Material`
-  daqui é neutro, só os cinco campos listados acima existem.
+  daqui é neutro, só os seis campos listados acima existem.

@@ -12,6 +12,17 @@ export default defineConfig({
     alias: {
       "@snaple/core": src("../../packages/core/src/index.ts"),
       "@snaple/three": src("../../packages/three/src/index.ts"),
+      "@snaple/ifc": src("../../packages/ifc/src/index.ts"),
     },
+  },
+  server: {
+    // escuta em todas as interfaces, não só localhost — é o que permite
+    // acessar pelo IP da rede local (ex.: 192.168.0.11:5173)
+    host: true,
+    // Vite 5+ recusa qualquer Host header fora da allowlist (proteção
+    // contra DNS rebinding); IPs literais passam direto, mas um hostname
+    // (como o domínio abaixo, se apontar/for proxeado para esta máquina)
+    // precisa estar explicitamente aqui.
+    allowedHosts: ["3d-space.devsnap.com.br"],
   },
 });

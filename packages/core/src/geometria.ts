@@ -18,9 +18,10 @@ import { type AABB, meiaExtensaoLocal, extensaoPerfil, sobreposicao } from "./bb
 import { frameDaFace, normalizarFace } from "./face.ts";
 import { ehContainer } from "./no.ts";
 import type { Cena } from "./cena.ts";
+import { type SecaoResolvida, type TrechoVarredura, resolverVarredura } from "./varredura.ts";
 import type {
   FeatureFuro, FormaFuro, No, NomeFace, ParamsCylinder, ParamsExtrude,
-  ParamsLathe, ParamsModel, ParamsPlane, ParamsBox, TipoGeometria,
+  ParamsLathe, ParamsHelix, ParamsModel, ParamsPlane, ParamsBox, ParamsSweep, TipoGeometria,
 } from "./tipos.ts";
 import { type Eixo, type IndiceEixo, type Ponto2D, type Vec3, EPS, arred, num } from "./vetor.ts";
 
@@ -82,6 +83,32 @@ export interface GeometriaPrimitiva {
   params: Record<string, unknown>;
 }
 
+/** Um tubo de seção circular varrendo um caminho helicoidal em torno do
+ * eixo +y local, já centrado (`y` vai de `-passo*voltas/2` a
+ * `+passo*voltas/2`) — mesma convenção de `cylinder`/`lathe`. É o primeiro
+ * caso de "varredura ao longo de um caminho" que o core suporta; um `sweep`
+ * genérico (curva arbitrária) é a extensão natural, e faria de `helix` um
+ * caso particular dele, sem quebrar este contrato. */
+export interface GeometriaHelice {
+  tipo: "helice";
+  raio: number;
+  raioTubo: number;
+  passo: number;
+  voltas: number;
+  segmentosPorVolta: number;
+  segmentosTubo: number;
+}
+
+/** Uma seção varrendo um caminho, já resolvida em anéis — ver
+ * `varredura.ts`. O backend costura os anéis de cada trecho com
+ * `verticeDoAnel` e fecha as pontas com a seção quando `tampas`. */
+export interface GeometriaVarredura {
+  tipo: "varredura";
+  secao: SecaoResolvida;
+  trechos: TrechoVarredura[];
+  tampas: boolean;
+}
+
 export interface GeometriaModelo {
   tipo: "modelo";
   src: string;
@@ -94,8 +121,8 @@ export interface GeometriaVazia {
 }
 
 export type GeometriaDerivada =
-  | GeometriaPrimitiva | GeometriaExtrusao | GeometriaRevolucao
-  | GeometriaModelo | GeometriaVazia;
+  | GeometriaPrimitiva | GeometriaExtrusao | GeometriaRevolucao | GeometriaHelice
+  | GeometriaVarredura | GeometriaModelo | GeometriaVazia;
 
 // ── Referencial da forma por eixo de extrusão ────────────────────────────
 
@@ -185,19 +212,43 @@ export function derivarGeometria(cena: Cena, no: No): GeometriaDerivada {
   if (furos.length === 0) {
     if (no.tipo === "extrude") return extrusaoSimples(no);
     if (no.tipo === "lathe") return revolucao(no);
+    if (no.tipo === "helix") return helice(no);
+    if (no.tipo === "sweep") {
+      const { secao, trechos, tampas } = resolverVarredura(no.params as ParamsSweep);
+      // cópia: o resolvido fica em cache e é compartilhado entre nós iguais
+      return structuredClone({ tipo: "varredura", secao, trechos, tampas });
+    }
     return { tipo: "primitiva", primitiva: no.tipo as TipoGeometria, params: { ...(no.params as object) } };
   }
 
   return extrusaoComFuros(cena, no, furos);
 }
 
+function helice(no: No): GeometriaHelice {
+  const p = no.params as ParamsHelix;
+  const voltas = num(p.voltas, 1);
+  if (voltas <= 0) throw new Error(`'${no.id}': 'voltas' de 'helix' precisa ser > 0`);
+  return {
+    tipo: "helice",
+    raio: num(p.raio, 0.1),
+    raioTubo: num(p.raioTubo, 0.01),
+    passo: num(p.passo, 0.05),
+    voltas,
+    segmentosPorVolta: Math.max(3, Math.round(num(p.segmentosPorVolta, 24))),
+    segmentosTubo: Math.max(3, Math.round(num(p.segmentosTubo, 8))),
+  };
+}
+
 function extrusaoSimples(no: No): GeometriaExtrusao {
   const p = no.params as ParamsExtrude;
   const pts = p.perfil ?? [];
   if (pts.length < 3) throw new Error(`'${no.id}': perfil de 'extrude' precisa de ao menos 3 pontos`);
-  const { centro } = extensaoPerfil(pts);
+  // `recentrar: false` preserva as coordenadas do perfil como declaradas; o
+  // eixo de extrusão (y) continua sempre centrado independente disso — só o
+  // plano XZ (u, v) é afetado.
+  const off: Ponto2D = p.recentrar === false ? [0, 0] : extensaoPerfil(pts).centro;
   // perfil declarado em (x, z) local → plano da forma do eixo y
-  const contorno = pts.map((q) => paraForma([num(q[0]) - centro[0], 0, num(q[1]) - centro[1]], "y"));
+  const contorno = pts.map((q) => paraForma([num(q[0]) - off[0], 0, num(q[1]) - off[1]], "y"));
   return {
     tipo: "extrusao",
     eixo: "y",
@@ -211,7 +262,9 @@ function revolucao(no: No): GeometriaRevolucao {
   const pts = p.perfil ?? [];
   if (pts.length < 2) throw new Error(`'${no.id}': perfil de 'lathe' precisa de ao menos 2 pontos`);
   const ys = pts.map((q) => num(q[1]));
-  const meio = (Math.min(...ys) + Math.max(...ys)) / 2;
+  // `recentrar: false` preserva as alturas do perfil como declaradas — mesma
+  // ideia de `extrude`, só que no eixo da revolução em vez do plano da base.
+  const meio = p.recentrar === false ? 0 : (Math.min(...ys) + Math.max(...ys)) / 2;
   return {
     tipo: "revolucao",
     perfil: pts.map((q) => [Math.abs(num(q[0])), num(q[1]) - meio] as Ponto2D),

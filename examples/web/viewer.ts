@@ -1,13 +1,28 @@
 /** Setup do viewer: renderer, luz, grid, eixos, controles e enquadramento.
- * Nada daqui é específico da cena — mexa em `cena.ts`, não aqui. */
+ * Nada daqui é específico da cena — mexa nos modelos em `modelos/`, não aqui. */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
+import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
+import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { ID_RAIZ, type Cena } from "@snaple/core";
-import { construirCena, type AvisoBackend } from "@snaple/three";
+import { construirCena, configurarAcao, type AnimacaoConstruida, type AvisoBackend } from "@snaple/three";
+import { exportarIFC } from "@snaple/ifc";
+
+export type FormatoExportacao = "glb" | "obj" | "stl" | "ifc";
 
 export interface Viewer {
   /** Troca a cena exibida e reenquadra a câmera. */
   mostrar(cena: Cena): Promise<AvisoBackend[]>;
+  /** Exporta a cena atualmente exibida e dispara o download no navegador.
+   * Lança se nenhuma cena foi montada ainda. */
+  exportar(formato: FormatoExportacao): Promise<void>;
+  /** Nomes das animações da cena exibida. */
+  animacoes(): string[];
+  /** Toca a animação `nome` do começo (`null` para e volta à pose parada). */
+  tocar(nome: string | null): void;
+  /** Pausa/retoma a animação atual; devolve se ficou tocando. */
+  alternarPausa(): boolean;
 }
 
 export function criarViewer(canvas: HTMLCanvasElement): Viewer {
@@ -15,6 +30,10 @@ export function criarViewer(canvas: HTMLCanvasElement): Viewer {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // cena e luzes ficam paradas enquanto a câmera orbita: o shadow map só é
+  // refeito quando `mostrar`/`enquadrar` mudam algo, não a cada frame (o que
+  // desenhava todas as malhas duas vezes por frame)
+  renderer.shadowMap.autoUpdate = false;
 
   const palco = new THREE.Scene();
   palco.background = new THREE.Color("#1b1d21");
@@ -22,6 +41,11 @@ export function criarViewer(canvas: HTMLCanvasElement): Viewer {
   const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
   const controles = new OrbitControls(camera, canvas);
   controles.enableDamping = true;
+
+  // render sob demanda: parado, o viewer não gasta GPU nenhuma
+  let sujo = true;
+  const pedirRender = () => { sujo = true; };
+  controles.addEventListener("change", pedirRender);
 
   // ── referência espacial ────────────────────────────────────────────────
   // grid no plano y=0 e eixos na origem: +x vermelho, +y verde, +z azul,
@@ -53,22 +77,35 @@ export function criarViewer(canvas: HTMLCanvasElement): Viewer {
   palco.add(chaoSombra);
 
   let atual: THREE.Object3D | null = null;
+  let cenaAtual: Cena | null = null;
+  let clipes: AnimacaoConstruida[] = [];
+  let mixer: THREE.AnimationMixer | null = null;
+  let acao: THREE.AnimationAction | null = null;
+  const relogio = new THREE.Clock();
 
   async function mostrar(cena: Cena): Promise<AvisoBackend[]> {
+    tocar(null);
     if (atual) {
       palco.remove(atual);
       descartar(atual);
     }
-    const { objeto, avisos } = await construirCena(cena);
+    cenaAtual = cena;
+    const { objeto, avisos, animacoes } = await construirCena(cena);
     objeto.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        o.castShadow = true;
+        // a película de um adesivo fica a 0,1 mm da peça: se projetasse
+        // sombra, sombrearia a própria superfície embaixo dela
+        o.castShadow = !o.userData.snapleAdesivo;
         o.receiveShadow = true;
       }
     });
     palco.add(objeto);
     atual = objeto;
+    clipes = animacoes;
+    mixer = new THREE.AnimationMixer(objeto);
     enquadrar(cena);
+    renderer.shadowMap.needsUpdate = true;
+    pedirRender();
     return avisos;
   }
 
@@ -146,16 +183,102 @@ export function criarViewer(canvas: HTMLCanvasElement): Viewer {
     renderer.setSize(l, a, false);
     camera.aspect = l / a;
     camera.updateProjectionMatrix();
+    pedirRender();
   }
   new ResizeObserver(redimensionar).observe(canvas);
   redimensionar();
 
+  function tocar(nome: string | null): void {
+    acao?.stop();
+    acao = null;
+    const c = nome === null ? undefined : clipes.find((x) => x.nome === nome);
+    if (c && mixer) {
+      acao = configurarAcao(mixer.clipAction(c.clip), c.repetir).play();
+      relogio.getDelta(); // zera o delta acumulado enquanto estava parado
+    }
+    renderer.shadowMap.needsUpdate = true;
+    pedirRender();
+  }
+
+  function alternarPausa(): boolean {
+    if (!acao) return false;
+    acao.paused = !acao.paused;
+    relogio.getDelta();
+    return !acao.paused;
+  }
+
   renderer.setAnimationLoop(() => {
-    controles.update();
+    controles.update(); // com damping, dispara "change" enquanto a inércia dura
+    const delta = relogio.getDelta();
+    if (mixer && acao && !acao.paused && acao.isRunning()) {
+      mixer.update(delta);
+      // as peças se movem: sombra e quadro precisam ser refeitos
+      renderer.shadowMap.needsUpdate = true;
+      sujo = true;
+    }
+    if (!sujo) return;
+    sujo = false;
     renderer.render(palco, camera);
   });
 
-  return { mostrar };
+  /** Exporta a cena no formato pedido e baixa o arquivo. `glb`/`obj`/`stl`
+   * usam o exportador oficial do Three.js sobre `atual` (o `THREE.Object3D`
+   * que `construirCena` já produziu, com luz/grid/chão de fora); `ifc` é
+   * diferente — não conhece Three.js, exporta a partir da `Cena` do snaple
+   * original (`cenaAtual`), via `@snaple/ifc`. */
+  async function exportar(formato: FormatoExportacao): Promise<void> {
+    if (formato === "ifc") {
+      if (!cenaAtual) throw new Error("nenhuma cena montada ainda — não há o que exportar");
+      baixar(exportarIFC(cenaAtual), "cena.ifc", "application/x-step");
+      return;
+    }
+    if (!atual) throw new Error("nenhuma cena montada ainda — não há o que exportar");
+    switch (formato) {
+      case "glb": {
+        const dados = await new Promise<ArrayBuffer>((resolve, reject) => {
+          new GLTFExporter().parse(
+            atual!,
+            (resultado) => resolve(resultado as ArrayBuffer),
+            (erro) => reject(erro instanceof Error ? erro : new Error(String(erro))),
+            { binary: true, animations: clipes.map((c) => c.clip) },
+          );
+        });
+        baixar(dados, "cena.glb", "model/gltf-binary");
+        break;
+      }
+      case "obj": {
+        const texto = new OBJExporter().parse(atual);
+        baixar(texto, "cena.obj", "text/plain");
+        break;
+      }
+      case "stl": {
+        // ASCII, não binário: mais fácil de conferir num editor de texto,
+        // e o ganho de tamanho do binário não importa para uma cena de
+        // demonstração como esta.
+        const texto = new STLExporter().parse(atual);
+        baixar(texto, "cena.stl", "model/stl");
+        break;
+      }
+      default: {
+        const _exaustivo: never = formato;
+        throw new Error(`formato de exportação desconhecido: '${String(_exaustivo)}'`);
+      }
+    }
+  }
+
+  return { mostrar, exportar, animacoes: () => clipes.map((c) => c.nome), tocar, alternarPausa };
+}
+
+/** Dispara o download de `conteudo` no navegador via um link `<a>` efêmero —
+ * não há endpoint de servidor aqui, é tudo estático no cliente. */
+function baixar(conteudo: BlobPart, nomeArquivo: string, tipoMime: string): void {
+  const blob = new Blob([conteudo], { type: tipoMime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Libera geometrias e materiais da cena anterior — sem isto, cada
@@ -164,6 +287,9 @@ function descartar(raiz: THREE.Object3D): void {
   raiz.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
     o.geometry.dispose();
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose();
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      (m as THREE.MeshStandardMaterial).map?.dispose();
+      m.dispose();
+    }
   });
 }

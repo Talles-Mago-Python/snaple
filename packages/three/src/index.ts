@@ -9,14 +9,21 @@
  * XZ, extrusão em +Z, material) moram todas aqui. */
 import * as THREE from "three";
 import {
-  Cena, derivarGeometria, rotacaoEfetiva,
+  Cena, derivarAdesivos, derivarGeometria, rotacaoEfetiva,
   type CenaJSON, type Material, type No, type ParamsModel, type Vec3,
 } from "@snaple/core";
 import { construirGeometrias, caixaProxy } from "./geometria.ts";
+import {
+  CacheImagens, type CarregarTextura, carregadorTexturaPadrao, configurarTextura, geometriaAdesivo, materialAdesivo,
+} from "./aparencia.ts";
+import { type AnimacaoConstruida, construirAnimacoes } from "./animacao.ts";
 
 export { construirGeometrias, caixaProxy } from "./geometria.ts";
+export { type CarregarTextura, carregadorTexturaPadrao } from "./aparencia.ts";
+export { type AnimacaoConstruida, configurarAcao } from "./animacao.ts";
 
-export type MotivoAviso = "modelo-ausente" | "bbox-divergente" | "geometria-falhou";
+export type MotivoAviso =
+  | "modelo-ausente" | "bbox-divergente" | "geometria-falhou" | "textura-ausente" | "adesivo-falhou";
 
 export interface AvisoBackend {
   motivo: MotivoAviso;
@@ -34,11 +41,27 @@ export interface OpcoesConstruir {
    * `tamanho` declarado, por eixo. Padrão 0.05 (5%). */
   toleranciaModelo?: number;
   aoAvisar?: (aviso: AvisoBackend) => void;
+  /** Reaproveitar geometria e material entre nós com a MESMA receita
+   * (mesmos params/furos, mesmo `material`)? Padrão `true`: uma cena com 500
+   * parafusos iguais vira 1 geometria e 1 material na GPU, não 500 de cada.
+   * Desligue se o seu código altera `mesh.material`/`mesh.geometry` de um nó
+   * esperando não afetar os outros (ex.: realce de seleção mudando a cor) —
+   * ou troque o material do nó em vez de mexer nele. */
+  compartilhar?: boolean;
+  /** Carregador das imagens de `textura`/`adesivos`. Padrão:
+   * `THREE.TextureLoader` no navegador; fora dele não há imagem (aviso
+   * `textura-ausente`, e a peça sai só com a cor). */
+  carregarTextura?: CarregarTextura;
+  /** Amostras por segundo das animações. Padrão 30. */
+  fpsAnimacao?: number;
 }
 
 export interface ResultadoConstrucao {
   objeto: THREE.Object3D;
   avisos: AvisoBackend[];
+  /** Um clipe por animação da cena, pronto para um `THREE.AnimationMixer`
+   * sobre `objeto` (e para o `GLTFExporter`, opção `animations`). */
+  animacoes: AnimacaoConstruida[];
 }
 
 /** Constrói a cena inteira. Assíncrona porque `model.src` pode precisar de
@@ -56,21 +79,42 @@ export async function construirCena(
   }
   const cena = Cena.deJSON(json);
   const avisos: AvisoBackend[] = [];
-  const avisar = (a: AvisoBackend) => {
-    avisos.push(a);
-    opcoes.aoAvisar?.(a);
+  const ctx: Contexto = {
+    cena,
+    opcoes,
+    avisar: (a) => {
+      avisos.push(a);
+      opcoes.aoAvisar?.(a);
+    },
+    compartilhar: opcoes.compartilhar !== false,
+    geometrias: new Map(),
+    materiais: new Map(),
+    imagens: new CacheImagens(opcoes.carregarTextura ?? carregadorTexturaPadrao),
+    objetos: new Map(),
   };
-  const objeto = await construirNo(cena, cena.raiz, opcoes, avisar);
-  return { objeto, avisos };
+  const objeto = await construirNo(ctx, cena.raiz);
+  const animacoes = construirAnimacoes(cena, ctx.objetos, opcoes.fpsAnimacao ?? 30);
+  return { objeto, avisos, animacoes };
 }
 
-async function construirNo(
-  cena: Cena,
-  no: No,
-  opcoes: OpcoesConstruir,
-  avisar: (a: AvisoBackend) => void,
-): Promise<THREE.Object3D> {
-  const raiz = await corpoDoNo(cena, no, opcoes, avisar);
+/** Estado de uma construção: caches por receita serializada (geometria e
+ * material só são compartilhados com `compartilhar`; imagem, sempre) e o
+ * objeto de cada nó, que as animações usam como alvo. */
+interface Contexto {
+  cena: Cena;
+  opcoes: OpcoesConstruir;
+  avisar: (a: AvisoBackend) => void;
+  compartilhar: boolean;
+  geometrias: Map<string, THREE.BufferGeometry[]>;
+  materiais: Map<string, Promise<THREE.Material>>;
+  imagens: CacheImagens;
+  objetos: Map<string, THREE.Object3D>;
+}
+
+async function construirNo(ctx: Contexto, no: No): Promise<THREE.Object3D> {
+  const raiz = await corpoDoNo(ctx, no);
+  await colarAdesivos(ctx, no, raiz);
+  ctx.objetos.set(no.id, raiz);
   raiz.name = no.nome ? `${no.id} (${no.nome})` : no.id;
   raiz.userData.snaple = { id: no.id, tipo: no.tipo, ...(no.nome ? { nome: no.nome } : {}) };
   const t = no.transform;
@@ -78,26 +122,26 @@ async function construirNo(
   const rotacao = rotacaoEfetiva(no);
   raiz.rotation.set(rotacao[0], rotacao[1], rotacao[2], "XYZ");
   raiz.scale.set(t.escala[0], t.escala[1], t.escala[2]);
-  for (const filho of no.filhos) {
-    raiz.add(await construirNo(cena, filho, opcoes, avisar));
-  }
+  // em paralelo: só faz diferença com vários `model` carregando por rede,
+  // e `Promise.all` preserva a ordem dos filhos
+  const filhos = await Promise.all(no.filhos.map((f) => construirNo(ctx, f)));
+  if (filhos.length) raiz.add(...filhos);
   return raiz;
 }
 
-async function corpoDoNo(
-  cena: Cena,
-  no: No,
-  opcoes: OpcoesConstruir,
-  avisar: (a: AvisoBackend) => void,
-): Promise<THREE.Object3D> {
+async function corpoDoNo(ctx: Contexto, no: No): Promise<THREE.Object3D> {
   if (no.tipo === "model") {
-    return modeloOuProxy(no, opcoes, avisar);
+    return modeloOuProxy(no, ctx.opcoes, ctx.avisar);
   }
   let geometrias: THREE.BufferGeometry[];
   try {
-    geometrias = construirGeometrias(derivarGeometria(cena, no));
+    const derivada = derivarGeometria(ctx.cena, no);
+    const chave = ctx.compartilhar ? JSON.stringify(derivada) : null;
+    const pronta = chave !== null ? ctx.geometrias.get(chave) : undefined;
+    geometrias = pronta ?? construirGeometrias(derivada);
+    if (chave !== null && !pronta) ctx.geometrias.set(chave, geometrias);
   } catch (e) {
-    avisar({
+    ctx.avisar({
       motivo: "geometria-falhou",
       noId: no.id,
       texto: `não foi possível gerar a geometria de '${no.id}': ${(e as Error).message}`,
@@ -105,7 +149,7 @@ async function corpoDoNo(
     return new THREE.Group();
   }
   if (geometrias.length === 0) return new THREE.Group();
-  const material = construirMaterial(no.material);
+  const material = await materialDoNo(ctx, no);
   if (geometrias.length === 1) return new THREE.Mesh(geometrias[0]!, material);
   // mais de uma parte = furo de profundidade parcial fatiou a peça
   const grupo = new THREE.Group();
@@ -197,8 +241,57 @@ const carregadorGLTFPadrao: CarregarModelo = async (src) => {
   return gltf.scene;
 };
 
+/** Material do nó, com a imagem de `textura` quando houver. Compartilhado
+ * entre nós com o mesmo `material` (a promessa é o que fica em cache, para
+ * dois nós iguais construídos em paralelo não carregarem duas vezes). */
+function materialDoNo(ctx: Contexto, no: No): Promise<THREE.Material> {
+  const m = no.material;
+  const criar = async () => {
+    const material = construirMaterial(m);
+    if (m?.textura) {
+      const r = await ctx.imagens.obter(m.textura.src);
+      if ("erro" in r) {
+        ctx.avisar({ motivo: "textura-ausente", noId: no.id, texto: `textura de '${no.id}': ${r.erro}; usando só a cor` });
+      } else {
+        (material as THREE.MeshStandardMaterial).map = configurarTextura(r.textura, m.textura);
+        material.needsUpdate = true;
+      }
+    }
+    return material;
+  };
+  if (!ctx.compartilhar) return criar();
+  const chave = JSON.stringify(m ?? null);
+  let p = ctx.materiais.get(chave);
+  if (!p) ctx.materiais.set(chave, p = criar());
+  return p;
+}
+
+/** Monta as películas dos adesivos do nó como filhas do objeto dele. */
+async function colarAdesivos(ctx: Contexto, no: No, alvo: THREE.Object3D): Promise<void> {
+  if (!no.adesivos?.length) return;
+  let receitas;
+  try {
+    receitas = derivarAdesivos(no);
+  } catch (e) {
+    ctx.avisar({ motivo: "adesivo-falhou", noId: no.id, texto: `adesivos de '${no.id}': ${(e as Error).message}` });
+    return;
+  }
+  await Promise.all(receitas.map(async (receita, i) => {
+    const r = await ctx.imagens.obter(receita.src);
+    if ("erro" in r) {
+      ctx.avisar({ motivo: "textura-ausente", noId: no.id, texto: `adesivo ${i} de '${no.id}': ${r.erro}` });
+      return;
+    }
+    const pelicula = new THREE.Mesh(geometriaAdesivo(receita), materialAdesivo(r.textura, no.material));
+    pelicula.name = `${no.id}:adesivo${i}`;
+    pelicula.userData.snapleAdesivo = { no: no.id, indice: i, src: receita.src };
+    alvo.add(pelicula);
+  }));
+}
+
 export function construirMaterial(m: Material | undefined): THREE.Material {
-  const cor = new THREE.Color(m?.cor ?? "#cccccc");
+  // com imagem, a cor padrão é branca: a cor multiplica a textura
+  const cor = new THREE.Color(m?.cor ?? (m?.textura ? "#ffffff" : "#cccccc"));
   const opacidade = m?.opacidade ?? 1;
   return new THREE.MeshStandardMaterial({
     color: cor,
@@ -207,6 +300,7 @@ export function construirMaterial(m: Material | undefined): THREE.Material {
     opacity: opacidade,
     transparent: opacidade < 1,
     wireframe: m?.aramado ?? false,
+    flatShading: m?.facetado ?? false,
     side: THREE.DoubleSide,
     ...(m?.emissivo ? {
       emissive: new THREE.Color(m.emissivo.cor),

@@ -2,7 +2,7 @@ import { Cena } from "@snaple/core";
 
 /**
  * SNAPLE R-01 — estudo de câmera retrô com objetiva 50 mm.
- * Cena independente: copie este arquivo para examples/web/cena.ts.
+ * Modelo do viewer: mora em examples/web/modelos/ e aparece sozinho no seletor.
  * Medidas em metros; +Y para cima; a objetiva aponta para +Z.
  *
  * Usa somente o contrato fornecido: grupo, box, cylinder, torus, lathe,

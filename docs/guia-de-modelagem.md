@@ -1,5 +1,9 @@
 # Guia de modelagem — escrevendo cenas snaple em código
 
+Nunca usou o snaple? Comece por
+[`primeiros-passos.md`](primeiros-passos.md) — este guia aqui presume que
+você já montou pelo menos um modelo simples.
+
 Este guia é para quem vai **escrever `.ts` diretamente** contra `@snaple/core`
 para montar um modelo (móvel, objeto mecânico, cena qualquer) — não para quem
 edita a lib. Para os conceitos da API (faces, layout, furos), leia o
@@ -28,8 +32,11 @@ roda no final:
    ```
 
    ```bash
-   npx tsx verificar.ts
+   node verificar.ts
    ```
+
+   Node 24+ executa `.ts` direto por type stripping; não precisa de `tsx`
+   nem de passo de build.
 
 3. **Leia a prosa de `descrever()` como se fosse a especificação da peça.**
    Se ela não bate com o que você tinha na cabeça ("a perna devia estar
@@ -102,7 +109,7 @@ Não importe um kit de helpers genérico de outro arquivo — cada modelo define
 os seus, do tamanho que precisa. Um relógio usa `cilindro`/`caixaBox`/`torus`;
 uma mesa só usa `caixa`. O ganho não é reuso entre arquivos, é que a chamada
 no corpo da função fica numa linha e lê como a peça, não como boilerplate de
-`criar_no`:
+`cena.criar(...)`:
 
 ```ts
 const cilindro = (
@@ -274,6 +281,33 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
   imprimiu no terminal, então dá para conferir texto contra imagem sem sair
   da página.
 
+## Imagens e movimento
+
+- **Imagem na peça inteira** (madeira, tecido): `material.textura`.
+  **Imagem numa região** (tela, rótulo, logo): `no.colarAdesivo(...)` — numa
+  face plana, ou em `face: "lateral"` para a superfície curva de
+  `cylinder`/`cone`/`lathe`. Imagens ficam em `examples/web/public/` e o
+  `src` começa na raiz (`"texturas/x.png"`).
+- **Peça que se mexe: modele a articulação como `junta`** e anime o
+  `angulo` dela, não a `rotacao` da peça. A junta fica no eixo de giro
+  (dobradiça na borda da caixa, não no centro da tampa), e o ângulo interpola
+  como número, então dá voltas inteiras.
+- **Gaveta, pistão, porta de correr:** `posicao` com `relativo: true`, que
+  soma à pose onde o layout deixou a peça, em vez de você recalcular a
+  posição absoluta.
+- **Confira o movimento, não só a pose parada:**
+  `cena.conferirAnimacaoTexto(nome)` roda o linter ao longo do ciclo e só
+  mostra o que a cena parada não tem.
+
+```ts
+const dobradica = caixa.criar("junta", { eixo: "x", angulo: 0, limites: [-1.9, 0] },
+  { transform: { posicao: [0, ALTURA / 2, -PROFUNDIDADE / 2] } }); // borda de trás
+dobradica.criar("box", { largura: LARGURA, altura: 0.008, profundidade: PROFUNDIDADE },
+  { transform: { posicao: [0, 0.004, PROFUNDIDADE / 2] } });
+cena.animar("abrir", { repetir: "vaivem" })
+  .faixa(dobradica, "angulo", [[0, 0], [1.5, -1.3]], { interpolacao: "suave" });
+```
+
 ## Checklist antes de considerar o modelo pronto
 
 - [ ] `avisosTexto()` não tem nada além do que você espera de propósito
@@ -291,6 +325,8 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
       de criada tem um `cena.acoplar` correspondente, e
       `cena.conferirMontagem()` passa nas poses que importam (ver seção
       acima).
+- [ ] Toda animação passa em `cena.conferirAnimacaoTexto(nome)` (vazio), ou
+      o que aparece é intencional.
 
 ## Erros comuns
 
@@ -318,9 +354,12 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
 
 ## Exemplos completos no repositório
 
-Os quatro primeiros moram em `examples/web/modelos/` — abra o viewer
+Todos menos o último moram em `examples/web/modelos/` — abra o viewer
 (`npm run dev`) e escolha qualquer um deles no seletor para ver ao vivo:
 
+- [`examples/web/modelos/vitrine.ts`](../examples/web/modelos/vitrine.ts) —
+  textura, adesivos (face plana, lateral de lata e de caneca) e duas
+  animações com junta, `relativo` e `degrau`.
 - [`examples/web/modelos/camera.ts`](../examples/web/modelos/camera.ts) —
   modelo mais denso do repo (uma câmera fotográfica inteira), bom exemplo de
   biblioteca de helpers ampliada quando a peça tem muitas sub-montagens
@@ -334,11 +373,17 @@ Os quatro primeiros moram em `examples/web/modelos/` — abra o viewer
   `contato`) conferidas com `cena.conferirMontagem()` numa varredura de
   poses; o exemplo de referência para a seção "Peças articuladas ou
   assentadas" acima.
+- [`examples/web/modelos/clareira-low-poly.ts`](../examples/web/modelos/clareira-low-poly.ts)
+  — estilo low poly: prismas por `extrude`, poucos segmentos, cor chapada e
+  variação determinística. Guia do estilo em
+  [`guia-low-poly.md`](guia-low-poly.md).
 - [`examples/web/modelos/teste.ts`](../examples/web/modelos/teste.ts) —
   ponto de partida em branco (uma base e um marcador), pensado para copiar e
   editar quando o modelo ainda não tem nome definitivo.
-- [`examples/oficina.ts`](../examples/oficina.ts) — cena de estresse: as 8
-  geometrias paramétricas, furos (passante/parcial/polígono), faces com e
-  sem reorientação, os três containers e as sete funções relacionais, tudo
-  numa cena só. Roda direto (`node examples/oficina.ts`) ou copiada para
-  `modelos/` para ver no viewer.
+- [`examples/oficina.ts`](../examples/oficina.ts) — cena de estresse: 8
+  das 9 geometrias paramétricas (todas menos `helix`) mais `model`, furos
+  (passante/parcial/polígono), faces com e sem reorientação, os três
+  containers flex e as sete funções relacionais, tudo numa cena só. Roda no
+  terminal (`node examples/oficina.ts`). Não aparece no viewer: exporta
+  `montarOficina()`, não `montarCena()`, e o bloco de execução direta usa
+  `process`, que não existe no navegador.

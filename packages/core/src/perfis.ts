@@ -80,3 +80,63 @@ export function elipse(raioU: number, raioV: number, n = 48): Ponto2D[] {
     return [raioU * Math.cos(a), raioV * Math.sin(a)];
   });
 }
+
+// ── Perfis estruturais (seção de `sweep`/`extrude`) ──────────────────────
+//
+// Todos centrados na própria bbox, anti-horários, com `largura` no eixo `s`
+// (u) e `altura` no eixo `t` (v, o `cima` da seção). O caminho de um `sweep`
+// passa pelo centro da bbox do perfil; para passar pela quina de uma
+// cantoneira, some o deslocamento aos pontos.
+
+function conferirPerfil(nome: string, largura: number, altura: number, espessuras: number[], limite: number): void {
+  if (largura <= 0 || altura <= 0) throw new Error(`${nome}: largura e altura precisam ser > 0 (recebeu ${largura} × ${altura})`);
+  for (const e of espessuras) {
+    if (e <= 0 || e >= limite) throw new Error(`${nome}: espessura ${e} precisa ficar entre 0 e ${limite}`);
+  }
+}
+
+function centrado(pts: Ponto2D[], largura: number, altura: number): Ponto2D[] {
+  return pts.map(([s, t]) => [s - largura / 2, t - altura / 2]);
+}
+
+/** Cantoneira (L): aba horizontal embaixo, aba vertical à esquerda. */
+export function perfilL(largura: number, altura: number, espessura: number): Ponto2D[] {
+  conferirPerfil("perfilL", largura, altura, [espessura], Math.min(largura, altura));
+  const e = espessura;
+  return centrado([[0, 0], [largura, 0], [largura, e], [e, e], [e, altura], [0, altura]], largura, altura);
+}
+
+/** Perfil U (canal): base embaixo, abas subindo nos dois lados — a abertura
+ * fica para `cima`. */
+export function perfilU(largura: number, altura: number, espessura: number): Ponto2D[] {
+  conferirPerfil("perfilU", largura, altura, [espessura], Math.min(largura / 2, altura));
+  const e = espessura;
+  return centrado([
+    [0, 0], [largura, 0], [largura, altura], [largura - e, altura],
+    [largura - e, e], [e, e], [e, altura], [0, altura],
+  ], largura, altura);
+}
+
+/** Perfil I (viga): mesas de `largura` em cima e embaixo, alma vertical no
+ * meio. `espessuraMesa` padrão = `espessuraAlma`. */
+export function perfilI(largura: number, altura: number, espessuraAlma: number, espessuraMesa = espessuraAlma): Ponto2D[] {
+  conferirPerfil("perfilI", largura, altura, [espessuraAlma], largura);
+  conferirPerfil("perfilI", largura, altura, [espessuraMesa], altura / 2);
+  const a = (largura - espessuraAlma) / 2, m = espessuraMesa;
+  return centrado([
+    [0, 0], [largura, 0], [largura, m], [largura - a, m], [largura - a, altura - m], [largura, altura - m],
+    [largura, altura], [0, altura], [0, altura - m], [a, altura - m], [a, m], [0, m],
+  ], largura, altura);
+}
+
+/** Perfil T: mesa de `largura` em cima, alma descendo no meio.
+ * `espessuraMesa` padrão = `espessuraAlma`. */
+export function perfilT(largura: number, altura: number, espessuraAlma: number, espessuraMesa = espessuraAlma): Ponto2D[] {
+  conferirPerfil("perfilT", largura, altura, [espessuraAlma], largura);
+  conferirPerfil("perfilT", largura, altura, [espessuraMesa], altura);
+  const a = (largura - espessuraAlma) / 2, m = espessuraMesa;
+  return centrado([
+    [a, 0], [largura - a, 0], [largura - a, altura - m], [largura, altura - m],
+    [largura, altura], [0, altura], [0, altura - m], [a, altura - m],
+  ], largura, altura);
+}

@@ -46,6 +46,19 @@
         cursor: pointer;
       }
       #picker select:hover { border-color: #4a515b; }
+      #animacao { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+      #animacao[hidden] { display: none; }
+      #animacao label { color: #6b7480; flex-shrink: 0; }
+      #animacao select, #animacao button {
+        padding: 6px 10px;
+        background: #22252b;
+        color: #d7dbe0;
+        border: 1px solid #3a4048;
+        border-radius: 4px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #animacao select { flex: 1; min-width: 0; }
       #exportar { display: flex; gap: 8px; margin: 0 0 10px; }
       #exportar button {
         flex: 1;
@@ -72,10 +85,16 @@
         <label for="modelo">Modelo</label>
         <select id="modelo"></select>
       </div>
+      <div id="animacao" hidden>
+        <label for="animacoes">Animação</label>
+        <select id="animacoes"></select>
+        <button type="button" id="pausa" aria-label="Pausar">⏸</button>
+      </div>
       <div id="exportar">
         <button type="button" data-formato="glb">Exportar .glb</button>
         <button type="button" data-formato="obj">Exportar .obj</button>
         <button type="button" data-formato="stl">Exportar .stl</button>
+        <button type="button" data-formato="ifc">Exportar .ifc</button>
       </div>
       <pre id="painel">carregando…</pre>
       <p id="dica">

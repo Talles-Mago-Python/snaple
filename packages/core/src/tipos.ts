@@ -27,7 +27,7 @@ export type TransformParcial = Partial<Transform>;
  * `bbox.ts` para por que essa invariante simplifica todo o resto. */
 export type TipoGeometria =
   | "box" | "sphere" | "cylinder" | "cone" | "plane" | "torus"
-  | "extrude" | "lathe" | "helix";
+  | "extrude" | "lathe" | "helix" | "sweep";
 
 /** Nó que referencia um arquivo externo por `src`, com `tamanho` declarado. */
 export type TipoModelo = "model";
@@ -75,8 +75,8 @@ export interface ParamsLathe { perfil: Ponto2D[]; segmentos?: number; recentrar?
 /** Hélice: um tubo de seção circular varrendo um caminho helicoidal em torno
  * do eixo +y local, centrado na origem — mesmo eixo de `cylinder`/`lathe`.
  * `passo` é a distância percorrida em y por volta completa; `voltas` pode ser
- * fracionário. Primeiro (e único, por ora) caso de varredura ao longo de um
- * caminho — ver nota em `README.md` sobre um futuro `sweep` genérico. */
+ * fracionário. Caso particular de varredura com forma fechada — para um
+ * caminho qualquer, ver `sweep`. */
 export interface ParamsHelix {
   raio: number;
   raioTubo: number;
@@ -84,6 +84,41 @@ export interface ParamsHelix {
   voltas: number;
   segmentosPorVolta?: number;
   segmentosTubo?: number;
+}
+/** Seção de um `sweep`, no plano `(s, t)` do anel: `s` à direita de quem
+ * percorre o caminho, `t` para `cima`. `circulo`/`retangulo` são centrados no
+ * caminho; `espessura` os deixa ocos (cano, metalon). `poligono` usa os
+ * pontos como estão — o caminho passa pela origem `(0, 0)` deles, o que
+ * permite posicionar uma cantoneira pela quina, por exemplo (ver
+ * `perfilL`/`perfilU`/`perfilI`/`perfilT` em `perfis.ts`). */
+export type SecaoSweep =
+  | { tipo: "circulo"; raio: number; segmentos?: number; espessura?: number }
+  | { tipo: "retangulo"; largura: number; altura: number; espessura?: number }
+  | { tipo: "poligono"; pontos: Ponto2D[] };
+
+/** Uma seção 2D varrendo um caminho 3D (fio, cabo, cano dobrado, metalon,
+ * cantoneira, quadro soldado). Ver `varredura.ts`.
+ *
+ * - `caminho`: pontos no espaço local do nó.
+ * - Cantos: por padrão, canto vivo em meia-esquadria; `raioCurva` troca cada
+ *   canto por uma dobra em arco desse raio; `suavizar: true` passa uma curva
+ *   suave (Catmull-Rom) por todos os pontos.
+ * - `fechado`: liga o último ponto ao primeiro (anel, moldura), sem tampas.
+ * - `cima` (padrão `[0, 1, 0]`): para onde aponta o `t` da seção no primeiro
+ *   ponto; dali em diante a seção acompanha o caminho sem torcer.
+ * - `segmentos` (padrão 12): subdivisões de cada vão suave ou dobra de 90°.
+ * - `recentrar` (padrão `true`): como em `extrude` — a origem local vai para
+ *   o centro da peça. `false` mantém o caminho nas coordenadas dadas, o que é
+ *   o natural para um fio ligando pontos conhecidos do pai. */
+export interface ParamsSweep {
+  caminho: Vec3[];
+  secao: SecaoSweep;
+  suavizar?: boolean;
+  raioCurva?: number;
+  fechado?: boolean;
+  cima?: Vec3;
+  segmentos?: number;
+  recentrar?: boolean;
 }
 /** Objeto por referência. `tamanho` é a bounding box DECLARADA e é o que o
  * layout usa — sem carregar o arquivo, exatamente como `width`/`height` num
@@ -131,6 +166,7 @@ export interface ParamsPorTipo {
   extrude: ParamsExtrude;
   lathe: ParamsLathe;
   helix: ParamsHelix;
+  sweep: ParamsSweep;
   model: ParamsModel;
   grupo: ParamsGrupo;
   row: ParamsFlex;
@@ -184,10 +220,52 @@ export interface Material {
   rugosidade?: number;
   opacidade?: number;
   aramado?: boolean;
+  /** Sombreamento chapado: cada face recebe uma cor só, e o polígono
+   * aparece mesmo em superfícies curvas (`sphere`, `cone`, `lathe` com
+   * poucos segmentos). É o que dá o visual low poly. Padrão `false`. */
+  facetado?: boolean;
   /** Cor própria, que não depende de luz — um mostrador de relógio aceso,
    * um LED. `intensidade` (padrão 1) escala a cor antes de somar; backends
    * sem HDR devem tratar valores acima de 1 como recorte no branco. */
   emissivo?: { cor: string; intensidade?: number };
+  /** Imagem repetida sobre a superfície inteira do nó (madeira, tecido,
+   * chapa). O mapeamento é o UV canônico de cada tipo (ver `spec/README.md`):
+   * cada face plana vai de 0 a 1, e superfícies curvas vão de 0 a 1 ao redor
+   * e ao longo. Para uma imagem numa REGIÃO da peça, use `adesivos`. */
+  textura?: Textura;
+}
+
+export interface Textura {
+  /** Caminho/URL da imagem, resolvido pelo backend (como `model.src`). */
+  src: string;
+  /** Quantas vezes a imagem se repete em (u, v). Padrão `[1, 1]`. */
+  repetir?: [number, number];
+  /** Giro da imagem, em radianos, em torno do centro. */
+  rotacao?: number;
+}
+
+/** Imagem colada numa região de uma superfície do nó — rótulo de lata, tela
+ * de monitor, logo numa caneca. É aparência, não geometria: não entra em
+ * bbox, layout nem linter.
+ *
+ * - Face plana (`topo`, `sul`, ... e aliases): `u`/`v` posicionam o CENTRO
+ *   no plano da face, com a mesma convenção de `furar`/`colocar` (origem no
+ *   centro da face); `largura`/`altura` em metros. Padrão: a face inteira.
+ *   A imagem sai legível vista de fora: o topo dela aponta para +y nas faces
+ *   verticais e para o norte (−z) em `topo`/`base`.
+ * - `lateral` (`cylinder`, `cone`, `lathe`): `u` é o ÂNGULO do centro, na
+ *   convenção de `lateral()` (0 = +z local, crescendo para +x); `v` é a
+ *   ALTURA do centro. `largura` é o arco em metros medido na altura `v`;
+ *   `altura` em metros. Padrão: a volta inteira e a altura inteira.
+ * - `rotacao` (só face plana): giro da imagem em radianos. */
+export interface Adesivo {
+  src: string;
+  face: FaceEntrada | "lateral";
+  u?: number;
+  v?: number;
+  largura?: number;
+  altura?: number;
+  rotacao?: number;
 }
 
 // ── Validação ────────────────────────────────────────────────────────────
@@ -214,6 +292,8 @@ export interface No<T extends TipoNo = TipoNo> {
   material?: Material;
   filhos: No[];
   features: Feature[];
+  /** Imagens coladas em regiões da superfície — ver `Adesivo`. */
+  adesivos?: Adesivo[];
   validacao?: Validacao;
 }
 
@@ -260,4 +340,58 @@ export interface CenaJSON {
   /** Ausente = nenhum acoplamento declarado. Não afeta geometria nem layout
    * — um backend que só desenha a malha pode ignorar este campo inteiro. */
   acoplamentos?: Acoplamento[];
+  /** Ausente = nenhuma animação. Ver `Animacao`. */
+  animacoes?: Animacao[];
+}
+
+// ── Animações ────────────────────────────────────────────────────────────
+
+/** O que uma faixa anima:
+ * - `posicao` / `rotacao` / `escala`: o `transform` do nó (espaço do pai;
+ *   rotação em Euler XYZ, radianos);
+ * - `angulo`: o `params.angulo` de uma `junta` — o jeito certo de abrir uma
+ *   porta ou girar um braço;
+ * - `opacidade` (0..1) e `cor` (`#rrggbb`): o material do nó. */
+export type PropriedadeAnimavel = "posicao" | "rotacao" | "escala" | "angulo" | "opacidade" | "cor";
+
+/** Entre dois quadros: `linear`; `suave` (acelera e desacelera — smoothstep
+ * no tempo); `degrau` (segura o valor até o próximo quadro). Rotações sempre
+ * interpolam pelo menor arco entre as orientações dos quadros (slerp). */
+export type Interpolacao = "linear" | "suave" | "degrau";
+
+export type ValorAnimado = number | Vec3 | string;
+
+export interface Quadro {
+  /** Segundos desde o início da animação. */
+  t: number;
+  valor: ValorAnimado;
+}
+
+export interface FaixaAnimacao {
+  /** Id do nó animado. */
+  no: string;
+  propriedade: PropriedadeAnimavel;
+  /** Em ordem crescente de `t`. Antes do primeiro vale o primeiro; depois do
+   * último, o último. */
+  quadros: Quadro[];
+  /** Padrão `linear`. */
+  interpolacao?: Interpolacao;
+  /** `true`: os valores são RELATIVOS à pose do nó na cena — somados em
+   * `posicao`/`angulo`, compostos no referencial do nó em `rotacao`,
+   * multiplicados em `escala`. Não vale para `opacidade`/`cor`. */
+  relativo?: boolean;
+}
+
+/** `nao`: toca uma vez e para no último quadro; `sempre`: recomeça;
+ * `vaivem`: vai e volta. */
+export type RepeticaoAnimacao = "nao" | "sempre" | "vaivem";
+
+export interface Animacao {
+  /** Nome único na cena — é por ele que a animação é referida. */
+  nome: string;
+  /** Segundos. Padrão: o `t` do último quadro de todas as faixas. */
+  duracao?: number;
+  /** Padrão `nao`. */
+  repetir?: RepeticaoAnimacao;
+  faixas: FaixaAnimacao[];
 }

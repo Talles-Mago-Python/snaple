@@ -6,9 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @snaple/core && npm run build -w @snaple/three",
-    "dev": "vite examples/web --open",
-    "check": "tsc -b packages/core packages/three && tsc -p examples/web --noEmit",
+    "build": "npm run build -w @snaple/core && npm run build -w @snaple/three && npm run build -w @snaple/ifc && npm run build -w @snaple/mcp",
+    "dev": "vite examples/web --open --host",
+    "check": "tsc -b packages/core packages/three packages/ifc packages/mcp && tsc -p examples/web --noEmit",
     "test": "npm run build && node --test 'tests/*.test.ts'",
     "exemplos": "node examples/mesa.ts && node examples/placa-furada.ts && node examples/prateleira.ts",
     "relatorio": "node tests/relatorio.ts",

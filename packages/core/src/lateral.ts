@@ -13,7 +13,7 @@ import type { AlvoNo, Cena, NoRef } from "./cena.ts";
 import { caixaLocalPropria } from "./bbox.ts";
 import { apontar } from "./orientacao.ts";
 import { baseDeEuler } from "./matriz.ts";
-import type { No, ParamsCylinder, ParamsLathe } from "./tipos.ts";
+import type { No, ParamsCone, ParamsCylinder, ParamsLathe } from "./tipos.ts";
 import { type Ponto2D, type Vec3, EPS, num, produtoEscalar } from "./vetor.ts";
 
 export interface OpcoesLateralColocar {
@@ -36,9 +36,15 @@ export interface OpcoesLateralColocar {
 
 /** Perfil `(raio, altura)` equivalente do dono, no MESMO referencial local
  * que `caixaLocalPropria`/a malha real usam (já resolvendo `recentrar` para
- * `lathe`). Um `cylinder` é um `lathe` de 2 pontos, por isso os dois tipos
- * compartilham toda a geometria de `Lateral` a partir daqui. */
-function perfilEfetivo(no: No): Ponto2D[] {
+ * `lathe`). Um `cylinder` é um `lathe` de 2 pontos (e um `cone`, um de raio
+ * zero no topo), por isso os três tipos compartilham toda a geometria de
+ * `Lateral` a partir daqui. */
+export function perfilEfetivo(no: No): Ponto2D[] {
+  if (no.tipo === "cone") {
+    const p = no.params as ParamsCone;
+    const h = num(p.altura, 1) / 2;
+    return [[num(p.raio, 1), -h], [0, h]];
+  }
   if (no.tipo === "cylinder") {
     const p = no.params as ParamsCylinder;
     const h = num(p.altura, 1) / 2;
@@ -52,7 +58,7 @@ function perfilEfetivo(no: No): Ponto2D[] {
     return pts.map((pt) => [Math.abs(num(pt[0])), num(pt[1]) - meio]);
   }
   throw new Error(
-    `lateral() só existe em 'cylinder' e 'lathe' (superfícies de revolução) — '${no.id}' é '${no.tipo}'`,
+    `lateral() só existe em 'cylinder', 'cone' e 'lathe' (superfícies de revolução) — '${no.id}' é '${no.tipo}'`,
   );
 }
 

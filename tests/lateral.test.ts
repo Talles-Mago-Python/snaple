@@ -70,11 +70,11 @@ test("lateral() fora do perfil dá erro claro", () => {
   assert.throws(() => cil.lateral().ponto(0, 10), /fora do perfil/);
 });
 
-test("lateral() só existe em cylinder/lathe", () => {
+test("lateral() só existe em cylinder/cone/lathe", () => {
   const cena = new Cena();
   const esfera = cena.criar("sphere", { raio: 0.3 });
   const caixa = cena.criar("box", { largura: 0.1, altura: 0.1, profundidade: 0.1 });
-  assert.throws(() => esfera.lateral().colocar(caixa, { angulo: 0, altura: 0 }), /só existe em 'cylinder' e 'lathe'/);
+  assert.throws(() => esfera.lateral().colocar(caixa, { angulo: 0, altura: 0 }), /só existe em 'cylinder', 'cone' e 'lathe'/);
 });
 
 test("lateral().colocar reparenta por padrão, como face().colocar", () => {

@@ -38,19 +38,22 @@ servidor aparece conectado, e que as tools abaixo estão listadas.
 
 | tool | o que faz |
 |---|---|
-| `criar_no` | cria um nó (geometria/model/container) |
+| `criar_no` | cria um nó (geometria/model/container; `junta` não é aceito) |
 | `modificar_no` | altera transform/params/material/nome |
 | `remover_no` | remove um nó e sua subárvore |
 | `listar_cena` | JSON normativo completo |
 | `obter_no` | um nó + bbox mundial |
 | `descrever_cena` | a cena em prosa |
-| `avisos_cena` | linter (interpenetração, flutuando, centros coincidentes) |
+| `avisos_cena` | linter: o texto de `avisosTexto()` (interpenetração, flutuando, centros coincidentes, junta fora do limite, acoplamento violado) |
 | `limpar_cena` | reinicia a cena |
 | `colocar_na_face` / `distribuir_na_face` / `grade_na_face` | posicionamento relativo à face própria de um nó |
 | `furar` / `atualizar_furo` / `limpar_furos` | furo paramétrico sem CSG |
+| `colar_adesivo` / `limpar_adesivos` | imagem numa região de uma face plana ou da lateral curva (`cylinder`/`cone`/`lathe`); textura na peça inteira vai em `material.textura` |
+| `criar_animacao` / `conferir_animacao` / `remover_animacao` | animação por quadros-chave (posição, rotação, escala, ângulo de junta, opacidade, cor); `criar_animacao` já devolve as colisões que aparecem durante o movimento |
 | `colocar_sobre` / `encostar` / `alinhar` / `centralizar_em` / `empilhar` / `distribuir` / `circular` | layout relacional no espaço do mundo |
 | `salvar_cena_json` / `carregar_cena_json` | persistência entre sessões |
 | `exportar_cena` | `.glb`/`.obj`/`.stl`, headless (sem navegador) |
+| `renderizar_png` | imagem PNG da cena (rasterizador de software, sem GPU), devolvida inline e opcionalmente gravada em arquivo; `vista` `iso`/`frente`/`lado`/`topo` ou um vetor; `animacao` + `t` renderizam a pose naquele instante. Não desenha imagens (textura/adesivo) |
 
 Cada tool devolve texto simples (id, confirmação, ou JSON quando faz sentido
 — `listar_cena`/`obter_no`); mutações incluem os avisos ativos no final,

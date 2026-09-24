@@ -17,9 +17,15 @@ export * from "./mundo.ts";
 export * from "./flex.ts";
 export * from "./face.ts";
 export * from "./geometria.ts";
+export * from "./varredura.ts";
+export * from "./adesivos.ts";
+export * from "./animacao.ts";
 export * from "./validar.ts";
 export * from "./descrever.ts";
-export { Cena, NoRef, AcoplamentoRef, ID_RAIZ, aabbNoEspacoDe, type AlvoNo, type OpcoesCriar } from "./cena.ts";
+export {
+  Cena, NoRef, AcoplamentoRef, AnimacaoRef, ID_RAIZ, aabbNoEspacoDe,
+  type AlvoNo, type OpcoesCriar, type ConferenciaAnimacao,
+} from "./cena.ts";
 export {
   erroDoAcoplamento, type ErroDoAcoplamento, type ErroAcoplamento, type RelatorioMontagem,
 } from "./acoplamento.ts";
@@ -34,9 +40,12 @@ export {
   baseDeEuler, eulerDeBase, type Mat4,
 } from "./matriz.ts";
 export { converter, apontar, conectar, type PontoRef, type OpcoesApontar, type OpcoesConectar } from "./orientacao.ts";
-export { Lateral, type OpcoesLateralColocar } from "./lateral.ts";
+export { Lateral, perfilEfetivo, type OpcoesLateralColocar } from "./lateral.ts";
 export { padraoCircular, type OpcoesPadraoCircular } from "./padroes.ts";
-export { arco, estadio, gota, retanguloArredondado, poligonoRegular, elipse } from "./perfis.ts";
+export {
+  arco, estadio, gota, retanguloArredondado, poligonoRegular, elipse,
+  perfilL, perfilU, perfilI, perfilT,
+} from "./perfis.ts";
 export {
   texto, planoDeFace, planoDeLateral, tracosDoGlifo,
   type Plano, type OpcoesTexto,

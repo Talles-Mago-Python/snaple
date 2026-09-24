@@ -9,6 +9,9 @@ import { criarViewer, type FormatoExportacao } from "./viewer.ts";
 const canvas = document.querySelector<HTMLCanvasElement>("#palco")!;
 const painel = document.querySelector<HTMLPreElement>("#painel")!;
 const seletor = document.querySelector<HTMLSelectElement>("#modelo")!;
+const barraAnimacao = document.querySelector<HTMLDivElement>("#animacao")!;
+const seletorAnimacao = document.querySelector<HTMLSelectElement>("#animacoes")!;
+const botaoPausa = document.querySelector<HTMLButtonElement>("#pausa")!;
 const viewer = criarViewer(canvas);
 
 for (const botao of document.querySelectorAll<HTMLButtonElement>("#exportar button")) {
@@ -100,6 +103,7 @@ async function recarregar(): Promise<void> {
   try {
     const cena = modulo.montarCena();
     const avisosBackend = await viewer.mostrar(cena);
+    popularAnimacoes();
 
     const blocos = [cena.descrever()];
     blocos.push(cena.avisosTexto() || "AVISOS: nenhum.");
@@ -117,6 +121,34 @@ async function recarregar(): Promise<void> {
     console.error(e);
   }
 }
+
+/** Lista as animações da cena exibida e já toca a primeira. */
+function popularAnimacoes(): void {
+  const nomes = viewer.animacoes();
+  barraAnimacao.hidden = nomes.length === 0;
+  seletorAnimacao.innerHTML = "";
+  for (const nome of ["", ...nomes]) {
+    const opcao = document.createElement("option");
+    opcao.value = nome;
+    opcao.textContent = nome || "— parada —";
+    seletorAnimacao.append(opcao);
+  }
+  seletorAnimacao.value = nomes[0] ?? "";
+  tocarSelecionada();
+}
+
+function tocarSelecionada(): void {
+  viewer.tocar(seletorAnimacao.value || null);
+  botaoPausa.textContent = "⏸";
+  botaoPausa.setAttribute("aria-label", "Pausar");
+}
+
+seletorAnimacao.addEventListener("change", tocarSelecionada);
+botaoPausa.addEventListener("click", () => {
+  const tocando = viewer.alternarPausa();
+  botaoPausa.textContent = tocando ? "⏸" : "▶";
+  botaoPausa.setAttribute("aria-label", tocando ? "Pausar" : "Continuar");
+});
 
 seletor.addEventListener("change", () => {
   nomeAtual = seletor.value;

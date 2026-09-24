@@ -314,7 +314,7 @@ export class Face {
     const mPai = pai ? mundo.get(pai.id)!.matriz : compor([0, 0, 0], [0, 0, 0], [1, 1, 1]);
     const local = multiplicar(inverter(mPai), mDesejada);
     no.transform.rotacao = decompor(local).rotacao;
-    cena.invalidar();
+    cena.invalidar(no);
   }
 
   /** Leva a borda do nó (no sentido contrário à normal) ao plano da face, e

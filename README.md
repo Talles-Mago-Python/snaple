@@ -13,6 +13,7 @@ resultante em `THREE.Object3D`.
 ```
 packages/core    estado, bounding box, faces, layout, features, validação, descrever()
 packages/three   backend: core → Three.js
+packages/ifc     backend: core → arquivo IFC (STEP/SPF), para Revit/ArchiCAD/Solibri
 packages/mcp     servidor MCP (stdio) — expõe core+three como tools pra Claude Code
 spec/            JSON Schema versionado do formato de cena (contrato normativo)
 examples/        exemplos executáveis + viewer web
@@ -24,6 +25,7 @@ tests/           testes unitários do core, sem navegador
 ```bash
 npm install @snaple/core
 npm install @snaple/three three   # opcional, só se for renderizar
+npm install @snaple/ifc           # opcional, só se for exportar para BIM (Revit, ArchiCAD, ...)
 ```
 
 ## Convenções
@@ -110,7 +112,8 @@ baixo do **tampo**, e não a do conjunto tampo+pernas depois que a primeira
 perna foi colocada.
 
 **Invariante que o resto todo aproveita:** toda geometria é centrada na
-própria origem local. Rotacionar um conjunto simétrico preserva a simetria,
+própria origem local (a exceção deliberada é `extrude`/`lathe` com
+`recentrar: false`, seção 6). Rotacionar um conjunto simétrico preserva a simetria,
 então o centro da AABB de um nó sem filhos é sempre a origem local levada para
 o mundo — qualquer que seja a rotação.
 
@@ -302,6 +305,10 @@ cena.criar("extrude", {
 }); // bbox local não passa mais por -h..+h; é o footprint real do perfil
 ```
 
+`lathe` aceita o mesmo `recentrar: false`, só que no eixo da revolução: as
+alturas do perfil ficam como declaradas (o raio continua simétrico em torno
+do eixo `y`, por ser um sólido de revolução).
+
 `helix` é uma peça nova: um tubo de seção circular varrendo um caminho
 helicoidal em torno do eixo `+y` local — o mesmo eixo de `cylinder`/`lathe`,
 já centrado (`y` vai de `-passo·voltas/2` a `+passo·voltas/2`). Serve para
@@ -329,11 +336,38 @@ mesma fórmula da bbox. Nenhum furo é suportado em `helix` (mesma família de
 `sphere`/`cone`/`torus`/`lathe`: não é a extrusão de um perfil 2D num só
 eixo, furar exigiria CSG).
 
-`helix` é o primeiro caso de **varredura ao longo de um caminho** que o core
-suporta — hoje só um caminho helicoidal fixo. Um `sweep` genérico (perfil 2D
-arbitrário varrendo uma curva arbitrária) é a extensão natural futura; quando
-existir, `helix` deve virar um caso particular dele, sem quebrar o formato de
-cena atual.
+Para uma seção qualquer varrendo um caminho qualquer (fio, cano dobrado,
+metalon, cantoneira, quadro soldado), use `sweep`. Ver
+[`docs/referencia-rapida.md`](docs/referencia-rapida.md#sweep-fios-canos-e-perfis).
+
+## Imagens e animação
+
+Textura, adesivo e animação seguem a mesma regra do resto: ficam no estado
+como parâmetro, o core calcula, o backend só traduz.
+
+```ts
+// imagem repetida na peça inteira
+cena.criar("box", { largura: 1.2, altura: 0.04, profundidade: 0.6 },
+  { material: { textura: { src: "texturas/madeira.png", repetir: [3, 1.5] } } });
+
+// imagem numa região: face plana, ou a lateral curva de cylinder/cone/lathe
+monitor.colarAdesivo({ src: "texturas/tela.png", face: "sul", largura: 0.47, altura: 0.27 });
+lata.colarAdesivo({ src: "texturas/rotulo.png", face: "lateral", altura: 0.1 });
+
+// animação por quadros-chave, guardada no JSON da cena
+cena.animar("abrir", { repetir: "vaivem" })
+  .faixa(dobradica, "angulo", [[0, 0], [1.5, -1.3]], { interpolacao: "suave" });
+cena.conferirAnimacaoTexto("abrir"); // colisões que só aparecem DURANTE o movimento
+cena.poseEm("abrir", 0.8);           // a cena naquele instante: bbox, faces e linter funcionam
+```
+
+Adesivo é aparência: não entra em bbox nem em layout. A animação é avaliada
+pelo core (`poseEm`, `amostrarAnimacao`), e o `@snaple/three` só a converte em
+`THREE.AnimationClip`. Referência completa em
+[`docs/referencia-rapida.md`](docs/referencia-rapida.md#adesivo--imagem-numa-região-da-peça-inclusive-superfície-curva);
+semântica normativa (UV canônico, interpolação) em
+[`spec/README.md`](spec/README.md#aparência--textura-e-adesivo). Exemplo
+completo: `examples/web/modelos/vitrine.ts`.
 
 ## Objetos importados: `model`
 
@@ -352,14 +386,34 @@ Depois de qualquer operação, `cena.avisos()` devolve os problemas em array
 estruturado, e `cena.avisosTexto()` os mesmos em texto:
 
 ```
-AVISO: caixa_a penetra caixa_b em 1.50 m no eixo x
-AVISO: bola flutua 2.00 m acima do chão, sem nada embaixo
-AVISO: um e dois têm praticamente o mesmo centro (0.0050 m de distância) — provável erro de posicionamento
+AVISO: gaveta penetra armário em 1.50 m no eixo x
+AVISO: luminária flutua 2.00 m acima do chão, sem nada embaixo
+AVISO: porca e arruela têm praticamente o mesmo centro (0.05 mm de distância) — provável erro de posicionamento
+AVISO: chapa penetra parafuso em 0.35 mm no eixo y
 ```
+
+O texto usa o `nome` do nó quando existe (senão, o id); os campos
+estruturados (`nos`, `no`) guardam sempre ids. Distâncias abaixo de 1 cm
+saem em milímetros, e um valor diferente de zero nunca é impresso como zero.
 
 São **sempre avisos, nunca bloqueios**: interpenetração pode ser deliberada
 (um prego cravado numa tábua) e a lib não tem como saber. Pares pai/filho são
 ignorados na detecção de interpenetração.
+
+Os tipos de aviso (`Aviso.tipo`):
+
+| tipo | quando |
+|---|---|
+| `interpenetracao` | dois nós (não pai/filho) se sobrepõem |
+| `flutuando` | a base de um nó está acima do chão sem nada embaixo |
+| `centros-coincidentes` | dois nós têm praticamente o mesmo centro: a distância é menor que 2% da diagonal da menor das duas peças (no máximo 3 cm), então funciona igual para móveis e para peças milimétricas |
+| `junta-fora-do-limite` | o `angulo` de uma `junta` saiu de `limites` |
+| `acoplamento-violado` | um [acoplamento](#acoplamentos--verificar-não-resolver) deixou de valer na pose atual |
+| `contato-intencional` | sobreposição declarada com `no.permitirContato(outro)` — não é problema |
+
+`contato-intencional` só aparece no array de `cena.avisos()`: fica de fora de
+`avisosTexto()`, e `descrever()` apenas resume quantos foram ignorados
+("2 contatos intencionais ignorados.").
 
 ## Acoplamentos — verificar, não resolver
 
@@ -415,7 +469,7 @@ cada acoplamento em prosa: *"O braço gira em torno do pivô do ombro."*,
 ```ts
 cena.descrever();
 // "Uma prateleira (1.2 × 0.03 × 0.25 m) no centro. Cinco livros apoiados
-//  sobre a prateleira. Aviso: box_1 flutua 1.39 m acima do chão, sem nada
+//  sobre a prateleira. Aviso: prateleira flutua 1.39 m acima do chão, sem nada
 //  embaixo."
 ```
 
@@ -438,6 +492,29 @@ O backend só faz isso. Ele não move nós, não faz layout e não valida — tu
 isso já aconteceu no core, em Node puro, antes de o Three.js entrar. A
 dependência é de mão única: o core não importa `@snaple/three` e não conhece
 nenhum nome de campo do Three.js.
+
+## Exportando para BIM (IFC)
+
+```ts
+import { exportarIFC } from "@snaple/ifc";
+import { writeFileSync } from "node:fs";
+
+writeFileSync("cena.ifc", exportarIFC(cena, { nomeProjeto: "Sala de jantar" }));
+```
+
+Gera um `.ifc` (STEP/SPF, schema IFC4) importável em Revit, ArchiCAD,
+Solibri ou qualquer leitor IFC. Geometria paramétrica é preservada como
+sólido exato sempre que o schema tiver equivalente (`box`/`cylinder` reto
+viram extrusão, `sphere` vira `IfcCsgSolid`, `lathe`/`cone` viram
+`IfcRevolvedAreaSolid`, furo vira `IfcArbitraryProfileDefWithVoids` — nunca
+uma operação booleana, mesma filosofia do furo no core); o que não tem
+equivalente direto (`helix`, `torus`, `sweep`, tronco de cone) sai como
+malha tesselada, com aviso. GUIDs são estáveis: exportar a mesma cena duas
+vezes produz o mesmo arquivo, byte a byte — importante para uma ferramenta
+BIM reconhecer os elementos em vez de duplicá-los numa reimportação.
+Detalhes de cada decisão (por que IFC4, por que a hierarquia é achatada,
+tabela de mapeamento completa, validação real contra `ifcopenshell`) em
+[`packages/ifc/README.md`](packages/ifc/README.md).
 
 ## Viewer web
 
@@ -463,6 +540,11 @@ então qualquer cena que entrar aparece inteira. Erro ao montar cai no painel,
 não numa tela branca. A escolha atual fica na URL (`?cena=nome`,
 compartilhável) e em `localStorage`, então recarregar a página mantém o
 mesmo modelo.
+
+Se a cena tem animações, aparece um seletor de animação com pausa, e a
+primeira já começa tocando. O `.glb` exportado leva os clipes. Imagens de
+textura/adesivo vão em `examples/web/public/`, servida na raiz do site
+(`public/texturas/x.png` → `src: "texturas/x.png"`).
 
 Os pacotes são resolvidos direto do código-fonte (`vite.config.ts`), então
 mexer em `packages/core/src` também recarrega na hora, sem `npm run build`.
@@ -529,8 +611,15 @@ lib, não uma parte dela.
 - **Concordância de gênero em `descrever()` é heurística** (substantivo
   terminado em "a"/"ã" é feminino). Acerta mesa, cadeira, xícara, caixa,
   esfera; erra "mapa". É prosa gerada, não gramática garantida.
-- **Sem câmera, luz ou animação no formato.** A cena descreve geometria e
-  layout; iluminar e enquadrar é do backend.
+- **Sem câmera nem luz no formato.** A cena descreve geometria, layout,
+  aparência e animação; iluminar e enquadrar é do backend.
+- **Imagens só no navegador.** Em Node não há como decodificar imagem: o
+  `renderizar_png` do MCP e a exportação headless saem sem textura/adesivo
+  (com aviso). No `.glb`, só as faixas de transformação ficam animadas: o
+  glTF não anima cor/opacidade.
+- **Adesivo curvo só em `cylinder`/`cone`/`lathe`** (não em `sphere` nem
+  `sweep`). `rotacao` animada gira pelo menor arco; para mais de meia volta,
+  anime o `angulo` de uma `junta`.
 
 ## Licença
 

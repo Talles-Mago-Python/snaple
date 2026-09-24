@@ -159,6 +159,13 @@ test("material.emissivo: mapeia cor e intensidade; sem emissivo, THREE usa o pad
   assert.equal(semIntensidadeDeclarada.emissiveIntensity, 1);
 });
 
+test("material.facetado: liga flatShading; padrão é sombreamento suave", () => {
+  const facetado = construirMaterial({ facetado: true }) as THREE.MeshStandardMaterial;
+  assert.equal(facetado.flatShading, true);
+  const suave = construirMaterial({}) as THREE.MeshStandardMaterial;
+  assert.equal(suave.flatShading, false);
+});
+
 test("junta: a malha do filho segue a rotação de params.angulo, não de transform.rotacao", async () => {
   const cena = new Cena();
   const junta = cena.criar("junta", { eixo: "z", angulo: Math.PI / 5 }, {

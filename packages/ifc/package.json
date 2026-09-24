@@ -1,0 +1,13 @@
+{
+  "name": "@snaple/ifc",
+  "version": "0.1.0",
+  "description": "Backend IFC (ISO 16739, STEP/SPF) para @snaple/core: consome o JSON da cena e produz um arquivo .ifc para Revit, ArchiCAD e outras ferramentas BIM.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": { "@snaple/core": "0.1.0" }
+}

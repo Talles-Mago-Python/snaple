@@ -24,7 +24,9 @@ dois motores diferentes.
 **Toda geometria paramétrica é centrada na própria origem local.** Uma caixa
 de 2 × 1 × 4 ocupa `[-1, 1] × [-0.5, 0.5] × [-2, 2]` no espaço local; um cone
 tem a base em `-altura/2` e o ápice em `+altura/2`; um perfil de `extrude` é
-recentrado na sua própria bounding box antes de ser extrudado.
+recentrado na sua própria bounding box antes de ser extrudado. A única
+exceção é `recentrar: false` em `extrude` e `lathe` (ver abaixo), em que a
+caixa local pode ser assimétrica.
 
 Isso não é detalhe de implementação, é parte do contrato. Como rotacionar um
 conjunto de pontos simétrico em torno da origem preserva a simetria
@@ -46,8 +48,9 @@ cena deslocada em relação ao layout que o core calculou.
 | `plane` | `largura`(x), `profundidade`(z) | superfície no plano XZ, normal +y, **espessura zero** |
 | `torus` | `raio`, `raioTubo`, `segmentos?`, `segmentosTubo?` | anel no plano XZ, eixo em +y |
 | `extrude` | `perfil` (`[x, z]`), `altura`, `recentrar?` | perfil fechado no plano XZ, extrudado em +y |
-| `lathe` | `perfil` (`[raio, altura]`), `segmentos?`, `recentrar?` | perfil revolucionado em torno de +y — `recentrar: false` preserva as alturas do perfil como estão, simétrico ao `recentrar` de `extrude` (ver seção do `extrude` acima) mas no eixo da revolução em vez do plano da base |
+| `lathe` | `perfil` (`[raio, altura]`), `segmentos?`, `recentrar?` | perfil revolucionado em torno de +y — `recentrar: false` preserva as alturas do perfil como estão, simétrico ao `recentrar` de `extrude` (ver seção do `extrude` abaixo) mas no eixo da revolução em vez do plano da base |
 | `helix` | `raio`, `raioTubo`, `passo`, `voltas`, `segmentosPorVolta?`, `segmentosTubo?` | tubo de seção circular varrendo um caminho helicoidal em torno de +y |
+| `sweep` | `caminho`, `secao`, `suavizar?`, `raioCurva?`, `fechado?`, `cima?`, `segmentos?`, `recentrar?` | seção 2D varrendo um caminho 3D (ver abaixo) |
 
 ### `recentrar` em `extrude`
 
@@ -96,11 +99,55 @@ paramétrica, no Three.js). `helix` não aceita furo: não é a extrusão de um
 perfil 2D num só eixo (mesma família de `sphere`/`cone`/`torus`/`lathe` na
 tabela de limites abaixo).
 
-`helix` é o primeiro caso de **varredura ao longo de um caminho** que o
-formato suporta — hoje só um caminho helicoidal fixo, com forma fechada. Um
-`sweep` genérico (perfil 2D arbitrário varrendo uma curva arbitrária) é a
-extensão natural futura; quando existir, `helix` deve poder ser reexpresso
-como um caso particular dele, sem quebrar este contrato.
+`helix` é o caso de varredura com forma fechada (caminho helicoidal). Para
+um caminho qualquer, ver `sweep`.
+
+### `sweep`
+
+```json
+{ "tipo": "sweep", "params": {
+  "caminho": [[0, 0, 0], [0.5, 0, 0], [0.5, 0.4, 0]], "raioCurva": 0.08,
+  "secao": { "tipo": "circulo", "raio": 0.0133, "espessura": 0.002 } } }
+```
+
+Uma seção 2D varrendo um caminho 3D (`caminho`, espaço local do nó). A
+geometria é normativa, porque dela sai a bbox:
+
+1. **Caminho.** Pontos consecutivos repetidos são descartados (e, com
+   `fechado`, um último ponto igual ao primeiro).
+   - Padrão: segmentos retos com **canto vivo**. Em cada junta, a seção dos
+     dois lados é cortada no plano da bissetriz, de normal
+     `normalizar(dEntra + dSai)` (meia-esquadria). Um caminho que volta sobre
+     si mesmo (`dEntra + dSai ≈ 0`) é erro.
+   - `raioCurva > 0`: cada canto vira um arco de raio `raioCurva` tangente
+     aos dois segmentos, recuado `raioCurva · tan(θ/2)` do vértice (`θ` =
+     ângulo de desvio). O arco é dividido em `ceil(segmentos · θ / (π/2))`
+     partes. É erro se os recuos das duas pontas de um segmento somarem mais
+     que o comprimento dele.
+   - `suavizar: true`: Catmull-Rom **centrípeta** (α = 0,5) por todos os
+     pontos, `segmentos` amostras por vão. Num caminho aberto, as pontas são
+     estendidas por reflexão (`2·P0 − P1`). A tangente de cada amostra é a
+     diferença central normalizada.
+2. **Referencial.** No primeiro ponto, `v` = `cima` (padrão `[0, 1, 0]`)
+   sem a componente na tangente `t`; se ficar degenerado, tenta `[0, 0, −1]`
+   e depois `[1, 0, 0]`. `u = t × v`. Dali em diante, o referencial é
+   **transportado** pela rotação mínima entre tangentes consecutivas (sem
+   torção). Com `fechado`, a torção residual de volta ao início (não nula em
+   caminho não plano) é distribuída por igual entre os anéis.
+3. **Seção.** O ponto `(s, t)` vai para `ponto + s·u + t·v`. Nas juntas de
+   canto vivo, o ponto desliza ao longo de `t` até o plano de corte.
+   `circulo` (`segmentos` padrão 16, primeiro ponto em `s = raio`) e
+   `retangulo` (`largura` em `s`, `altura` em `t`) são centrados;
+   `espessura` os deixa ocos. `poligono` usa os pontos como estão.
+4. **Bbox.** A caixa local é a dos vértices do contorno em todos os anéis
+   (é exata). Com `recentrar` (padrão `true`), o caminho é deslocado para
+   que o centro dessa caixa fique na origem local, como em `extrude`.
+5. **Pontas.** Caminho aberto: as duas pontas são tampadas com a seção.
+   Fechado: sem tampas.
+
+Com params inválidos, a implementação de referência usa como bbox a caixa
+dos pontos do caminho (o layout da cena não pode quebrar por um nó) e acusa o
+erro ao derivar a geometria. `sweep` não aceita furo.
 
 ### `model` — objeto por referência
 
@@ -152,6 +199,21 @@ articulação da cadeia — útil em qualquer hierarquia de juntas encadeadas
 `limites` (`[mínimo, máximo]` em radianos) é só para o linter: `angulo` fora
 do intervalo vira aviso `junta-fora-do-limite`, nunca bloqueio — a cena
 continua válida e renderizável com a junta em qualquer ângulo.
+
+## Acoplamentos
+
+O documento pode ter um campo `acoplamentos` na raiz (ausente = nenhum):
+relações declaradas entre faces de dois nós, `contato` (faces coplanares,
+normais opostas) ou `pivo` (centros coincidentes, normais opostas).
+
+```json
+{ "id": "acoplamento_1", "tipo": "pivo", "nome": "ombro",
+  "a": { "no": "box_1", "face": "topo" }, "b": { "no": "box_2", "face": "base" } }
+```
+
+Acoplamentos são **verificados, nunca resolvidos**: não movem nada e não
+afetam geometria nem layout. Um backend que só desenha a malha pode ignorar
+o campo inteiro. `face` já vem normalizada (nome longo, sem alias).
 
 ## Faces
 
@@ -286,7 +348,7 @@ O core recusa, com erro explicando por quê:
 | caso | motivo |
 |---|---|
 | furo em nó `model` | `malha-importada` — não há parâmetros a regerar |
-| furo em `sphere`/`cone`/`torus`/`lathe`/`helix`/tronco de cone | `geometria-nao-extrudavel` |
+| furo em `sphere`/`cone`/`torus`/`lathe`/`helix`/`sweep`/tronco de cone | `geometria-nao-extrudavel` |
 | dois furos em faces de normais diferentes no mesmo nó | `faces-conflitantes` |
 | furo cujo volume alcança outro nó da cena | `atravessa-outro-no` |
 | furo maior que a peça | `furo-maior-que-o-no` |
@@ -346,6 +408,65 @@ traço), não como irmãs — é o que faz o linter (que ignora pares
 ancestral/descendente) tratar os traços de uma letra como um conjunto só,
 sem precisar de `permitirContato` traço a traço. Caracteres diferentes
 continuam sendo nós independentes entre si.
+
+## Aparência — textura e adesivo
+
+`src` (em `material.textura` e em cada adesivo) é resolvido pelo backend,
+como `model.src`. Imagem que não carrega é aviso, nunca erro: a peça sai com
+a cor do material.
+
+**UV canônico** (o que `material.textura` usa). Toda superfície vai de 0 a 1
+em (u, v); `repetir` multiplica, `rotacao` gira em torno de (0,5; 0,5):
+
+| tipo | mapeamento |
+|---|---|
+| `box`, `plane` | cada face de 0 a 1 |
+| `cylinder`, `cone`, `lathe` | lateral: u ao redor (0 em `+z`, crescendo para `+x`), v de baixo para cima; tampas em disco |
+| `sphere`, `torus`, `helix` | o mapeamento nativo da primitiva (u ao redor, v ao longo) |
+| `extrude` | tampas: o perfil normalizado pela própria caixa 2D; paredes: u = posição ao longo do perímetro do laço (0 a 1), v ao longo da extrusão inteira (0 a 1, contínuo entre as fatias de um furo parcial) |
+| `sweep` | paredes: u ao longo do perímetro da seção, v ao longo do comprimento do caminho; tampas: a seção normalizada pela própria caixa 2D. A costura repete o primeiro ponto com u = 1 (e v = 1 em caminho fechado): a textura não volta para trás |
+
+**Adesivo** (`no.adesivos[]`). A película é um recorte da superfície,
+afastado `0,1 mm` para fora ao longo da normal, com a imagem de 0 a 1 nele:
+
+- face plana: retângulo `largura × altura` centrado em `(u, v)` do
+  referencial da face (o mesmo de `furar`). Topo da imagem = `+y` nas faces
+  verticais, `−z` em `topo`/`base`; direita = `topo × normal` (legível de
+  fora); `rotacao` gira os dois eixos em torno da normal. Padrão: a face
+  inteira. Faces planas: `box` (todas), `plane`/`extrude`/`cylinder`
+  (`topo`/`base`), `cone` (`base`);
+- `lateral` (`cylinder`, `cone`, `lathe`): o perfil de revolução recortado
+  na faixa `v ± altura/2` (entre as passagens do perfil por essa faixa, a de
+  maior raio médio: a parede de fora de uma peça oca), varrido pelo ângulo
+  `u ± (largura / raio em v) / 2`. A imagem cresce com o ângulo (direita) e
+  ao longo do comprimento do perfil (cima).
+
+Adesivo não entra em bbox, layout nem linter.
+
+## Animação
+
+`CenaJSON.animacoes[]`: cada animação tem `nome` único, `duracao` (padrão:
+último quadro), `repetir` (`nao` | `sempre` | `vaivem`) e faixas. Cada
+faixa anima uma propriedade de um nó por quadros `{ t, valor }` em ordem
+estritamente crescente de `t`. A cena gravada é a **pose de repouso**.
+
+Valor de uma faixa no instante `t` (dentro do ciclo):
+
+1. antes do primeiro quadro, o primeiro; depois do último, o último;
+2. entre os quadros `a` e `b`: `s = (t − a.t) / (b.t − a.t)`; `suave` usa
+   `s² (3 − 2s)`; `degrau` fica com `a.valor`;
+3. mistura: números e vetores linearmente; `cor` por canal RGB (0–255,
+   arredondado); `rotacao` por **slerp** entre os quatérnios dos Euler XYZ
+   dos dois quadros, pelo menor arco;
+4. `relativo`: `posicao`/`angulo` somam à pose de repouso, `escala`
+   multiplica, `rotacao` compõe no referencial do nó (`q = q_repouso ·
+   q_quadro`). Não vale para `opacidade`/`cor`.
+
+Tempo de reprodução → ciclo: `nao` prende em `[0, duracao]`; `sempre` usa
+`t mod duracao`; `vaivem` usa `t mod 2·duracao`, espelhado na segunda metade.
+
+`angulo` só existe em `junta`, e é por ele que uma peça gira mais de meia
+volta: interpola o número, não a orientação.
 
 ## Versionamento
 

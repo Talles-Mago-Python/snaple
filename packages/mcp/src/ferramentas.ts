@@ -52,15 +52,26 @@ const materialShape = z.object({
   rugosidade: z.number().min(0).max(1).optional(),
   opacidade: z.number().min(0).max(1).optional(),
   aramado: z.boolean().optional().describe("Renderiza como wireframe."),
+  facetado: z.boolean().optional().describe("Sombreamento chapado por face (visual low poly), inclusive em sphere/cone/lathe."),
   emissivo: z.object({
     cor: z.string(),
     intensidade: z.number().min(0).optional().describe("Padrão 1."),
   }).optional().describe("Cor própria, que não depende de luz — um mostrador aceso, um LED."),
+  textura: z.object({
+    src: z.string().describe("Caminho/URL da imagem (resolvido pelo viewer/backend)."),
+    repetir: z.tuple([z.number(), z.number()]).optional().describe("Repetições em (u, v). Padrão [1,1]."),
+    rotacao: z.number().optional().describe("Giro da imagem, em radianos."),
+  }).optional().describe(
+    "Imagem repetida sobre a peça inteira (madeira, tecido): cada face plana e cada superfície curva vão de 0 a 1. " +
+    "A cor multiplica a imagem (padrão branco). Para uma imagem numa REGIÃO da peça, use colar_adesivo.",
+  ),
 }).optional();
 
+const valorAnimado = z.union([z.number(), vec3, z.string()]);
+
 const tipoNoShape = z.enum([
-  "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix",
-  "model", "grupo", "row", "column", "stack",
+  "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix", "sweep",
+  "model", "grupo", "row", "column", "stack", "junta",
 ]).describe(
   "box{largura,altura,profundidade} · sphere{raio,segmentos?} · " +
   "cylinder{raioTopo,raioBase,altura,segmentos?} (raioTopo=raioBase → cilindro reto; " +
@@ -69,8 +80,15 @@ const tipoNoShape = z.enum([
   "eixo +y) · extrude{perfil:[[x,z],...],altura,recentrar?} (perfil no plano XZ, extrudado " +
   "em +y) · lathe{perfil:[[raio,altura],...],segmentos?} (revolucionado em torno de +y) · " +
   "helix{raio,raioTubo,passo,voltas,segmentosPorVolta?,segmentosTubo?} (mola/rosca/cabo " +
-  "espiralado, eixo +y) · model{src,tamanho:[x,y,z]} (bbox declarada, sem carregar arquivo) · " +
-  "grupo/row/column/stack{} (containers de layout, sem params)",
+  "espiralado, eixo +y) · sweep{caminho:[[x,y,z],...],secao,suavizar?,raioCurva?,fechado?,cima?,segmentos?," +
+  "recentrar?} (seção varrendo um caminho: fio/cabo com suavizar:true, cano dobrado com raioCurva, " +
+  "metalon/cantoneira/quadro soldado com canto vivo em meia-esquadria (padrão); secao = " +
+  "{tipo:'circulo',raio,espessura?} | {tipo:'retangulo',largura,altura,espessura?} | " +
+  "{tipo:'poligono',pontos:[[s,t],...]}, s à direita do caminho e t para cima; espessura = oco; " +
+  "recentrar:false mantém o caminho nas coordenadas do pai) · model{src,tamanho:[x,y,z]} (bbox declarada, sem carregar arquivo) · " +
+  "grupo/row/column/stack{} (containers de layout, sem params) · junta{eixo:'x'|'y'|'z',angulo,limites?:[min,max]} " +
+  "(container articulado: os filhos giram 'angulo' rad em torno do eixo, na origem da junta — dobradiça, cotovelo; " +
+  "anime 'angulo' em criar_animacao)",
 );
 
 const faceShape = z.enum(["topo", "base", "norte", "sul", "leste", "oeste", "+y", "-y", "-z", "+z", "+x", "-x"])
@@ -197,6 +215,102 @@ export function registrarFerramentas(server: McpServer): void {
     description: "Roda o linter de cena (interpenetração, objetos flutuando, centros coincidentes). São avisos, nunca bloqueios.",
     inputSchema: {},
   }, () => executar(() => cenaAtual().avisosTexto(), (t) => t || "nenhum aviso"));
+
+  // ── Aparência: adesivos ─────────────────────────────────────────────
+
+  server.registerTool("colar_adesivo", {
+    title: "Colar adesivo",
+    description: (
+      "Cola uma imagem numa região da superfície de um nó (rótulo de lata, tela de monitor, logo numa caneca). " +
+      "Aparência pura: não muda bbox nem layout. Face plana (topo/base/norte/sul/leste/oeste): u/v = centro no " +
+      "plano da face (convenção de furar), largura/altura em metros; padrão = face inteira; a imagem sai legível " +
+      "vista de fora (topo da imagem para +y, ou para o norte em topo/base). face 'lateral' (cylinder, cone, " +
+      "lathe): u = ÂNGULO do centro em rad (0 = +z, crescendo para +x), v = ALTURA do centro, largura = arco em " +
+      "metros, altura em metros; padrão = volta inteira. Faces que o tipo não tem viram erro explicado."
+    ),
+    inputSchema: {
+      id: z.string(), src: z.string(), face: z.union([faceShape, z.literal("lateral")]),
+      u: z.number().optional(), v: z.number().optional(),
+      largura: z.number().positive().optional(), altura: z.number().positive().optional(),
+      rotacao: z.number().optional().describe("Só face plana: giro da imagem, em radianos."),
+    },
+  }, ({ id, ...adesivo }) => executar(
+    () => { cenaAtual().ref(id).colarAdesivo(adesivo as never); return id; },
+    (id) => `adesivo colado em '${id}'`,
+  ));
+
+  server.registerTool("limpar_adesivos", {
+    title: "Limpar adesivos",
+    description: "Remove todos os adesivos de um nó.",
+    inputSchema: { id: z.string() },
+  }, ({ id }) => executar(
+    () => { cenaAtual().ref(id).limparAdesivos(); return id; },
+    (id) => `adesivos de '${id}' removidos`,
+  ));
+
+  // ── Animações ───────────────────────────────────────────────────────
+
+  server.registerTool("criar_animacao", {
+    title: "Criar animação",
+    description: (
+      "Cria uma animação por quadros-chave (substitui a de mesmo nome se 'substituir'). Cada faixa anima uma " +
+      "propriedade de um nó: posicao/rotacao/escala ([x,y,z], espaço do pai, rotação em rad), angulo (número, rad — " +
+      "só em nó 'junta': o jeito certo de abrir porta/girar braço, e o único que gira mais de meia volta), " +
+      "opacidade (0..1), cor ('#rrggbb'). quadros = [[t_segundos, valor], ...] em ordem crescente de t. " +
+      "interpolacao: linear | suave (acelera/desacelera) | degrau. relativo:true = valores somados à pose atual " +
+      "do nó (ex.: gaveta abre [0,0,0.3]). Rotação interpola pelo menor arco. Depois de criar, use " +
+      "conferir_animacao para achar colisões durante o movimento."
+    ),
+    inputSchema: {
+      nome: z.string(),
+      duracao: z.number().positive().optional().describe("Segundos. Padrão: o último quadro."),
+      repetir: z.enum(["nao", "sempre", "vaivem"]).optional().describe("Padrão 'nao'."),
+      substituir: z.boolean().optional(),
+      faixas: z.array(z.object({
+        no: z.string(),
+        propriedade: z.enum(["posicao", "rotacao", "escala", "angulo", "opacidade", "cor"]),
+        quadros: z.array(z.tuple([z.number(), valorAnimado])).min(1),
+        interpolacao: z.enum(["linear", "suave", "degrau"]).optional(),
+        relativo: z.boolean().optional(),
+      })).min(1),
+    },
+  }, ({ nome, duracao, repetir, substituir, faixas }) => executar(() => {
+    const cena = cenaAtual();
+    const anterior = cena.animacoes().find((a) => a.nome === nome);
+    if (anterior && !substituir) throw new Error(`já existe uma animação '${nome}' (use substituir: true)`);
+    // tudo ou nada: uma faixa inválida não deixa a animação pela metade
+    const rascunho = Cena.deJSON(cena.toJSON());
+    if (anterior) rascunho.removerAnimacao(nome);
+    const ref = rascunho.animar(nome, { ...(duracao ? { duracao } : {}), ...(repetir ? { repetir } : {}) });
+    for (const f of faixas) {
+      ref.faixa(f.no, f.propriedade, f.quadros as never, {
+        ...(f.interpolacao ? { interpolacao: f.interpolacao } : {}), ...(f.relativo ? { relativo: true } : {}),
+      });
+    }
+    if (anterior) cena.removerAnimacao(nome);
+    const nova = rascunho.animacao(nome);
+    const r = cena.animar(nome, {
+      ...(nova.duracao !== undefined ? { duracao: nova.duracao } : {}), ...(nova.repetir ? { repetir: nova.repetir } : {}),
+    });
+    for (const f of nova.faixas) cena.definirFaixa(r.nome, f);
+    return cena.conferirAnimacaoTexto(nome);
+  }, (conferencia) => `animação '${nome}' criada` +
+    (conferencia ? `\nDURANTE O MOVIMENTO:\n${conferencia}` : "\nnenhum problema novo durante o movimento")));
+
+  server.registerTool("conferir_animacao", {
+    title: "Conferir animação",
+    description: "Roda o linter ao longo de um ciclo da animação e lista os instantes com problemas NOVOS (que a cena parada não tem): peça atravessando outra, junta fora do limite.",
+    inputSchema: { nome: z.string(), amostras: z.number().int().min(1).optional().describe("Padrão 30.") },
+  }, ({ nome, amostras }) => executar(
+    () => cenaAtual().conferirAnimacaoTexto(nome, amostras ? { amostras } : {}),
+    (t) => t || "nenhum problema novo durante o movimento",
+  ));
+
+  server.registerTool("remover_animacao", {
+    title: "Remover animação",
+    description: "Remove uma animação pelo nome.",
+    inputSchema: { nome: z.string() },
+  }, ({ nome }) => executar(() => { cenaAtual().removerAnimacao(nome); return nome; }, (n) => `animação '${n}' removida`));
 
   server.registerTool("limpar_cena", {
     title: "Limpar cena",
@@ -416,11 +530,13 @@ export function registrarFerramentas(server: McpServer): void {
     description: "Renderiza a cena (via @snaple/three, headless — sem navegador) e exporta para .glb, .obj ou .stl.",
     inputSchema: { formato: z.enum(["glb", "obj", "stl"]), caminho: z.string() },
   }, ({ formato, caminho }) => executarAsync(async () => {
-    const { objeto, avisos } = await construirCena(cenaAtual(), { carregarModelo: async () => null });
+    const { objeto, avisos, animacoes } = await construirCena(cenaAtual(), { carregarModelo: async () => null });
     await mkdir(dirname(caminho), { recursive: true });
     if (formato === "glb") {
       const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-        new GLTFExporter().parse(objeto, (r) => resolve(r as ArrayBuffer), reject, { binary: true });
+        new GLTFExporter().parse(objeto, (r) => resolve(r as ArrayBuffer), reject, {
+          binary: true, animations: animacoes.map((a) => a.clip),
+        });
       });
       await writeFile(caminho, Buffer.from(buffer));
     } else if (formato === "obj") {
@@ -448,10 +564,21 @@ export function registrarFerramentas(server: McpServer): void {
       largura: z.number().int().positive().optional().describe("Pixels. Padrão 480."),
       altura: z.number().int().positive().optional().describe("Pixels. Padrão 360."),
       caminho: z.string().optional().describe("Se presente, também grava o PNG neste arquivo (além de devolvê-lo inline)."),
+      animacao: z.string().optional().describe("Renderiza a pose desta animação no instante 't' (em vez da pose parada)."),
+      t: z.number().optional().describe("Segundos, com 'animacao'. Padrão 0."),
     },
-  }, async ({ vista, alvo, distancia, largura, altura, caminho }) => {
+  }, async ({ vista, alvo, distancia, largura, altura, caminho, animacao, t }) => {
     try {
-      const { objeto, avisos } = await construirCena(cenaAtual(), { carregarModelo: async () => null });
+      const cena = animacao ? cenaAtual().poseEm(animacao, t ?? 0) : cenaAtual();
+      const construido = await construirCena(cena, { carregarModelo: async () => null });
+      const { objeto } = construido;
+      // este rasterizador não desenha imagem nenhuma: textura e adesivo não
+      // são problema da cena, só limite do PNG — um aviso só, não um por nó
+      const semImagem = construido.avisos.some((a) => a.motivo === "textura-ausente");
+      const avisos = [
+        ...construido.avisos.filter((a) => a.motivo !== "textura-ausente"),
+        ...(semImagem ? [{ texto: "texturas e adesivos não aparecem neste PNG (o rasterizador não desenha imagens)" }] : []),
+      ];
       const resultado = renderizar(objeto, {
         ...(vista !== undefined ? { vista } : {}),
         ...(alvo ? { alvo } : {}),

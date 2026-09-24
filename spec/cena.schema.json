@@ -15,6 +15,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/acoplamento" },
       "description": "Relações declaradas entre faces de dois nós, verificadas sob demanda (nunca resolvidas — não afetam `transform`). Ausente ou vazio = nenhuma. Um backend que só desenha a malha pode ignorar este campo inteiro."
+    },
+    "animacoes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/animacao" },
+      "description": "Animações por quadros-chave. Ausente = nenhuma. A cena sem animação tocando é a pose de repouso (os valores gravados nos nós). Ver `spec/README.md` para a interpolação normativa."
     }
   },
   "$defs": {
@@ -51,6 +56,7 @@
         "rugosidade": { "type": "number", "minimum": 0, "maximum": 1 },
         "opacidade": { "type": "number", "minimum": 0, "maximum": 1 },
         "aramado": { "type": "boolean" },
+        "facetado": { "type": "boolean", "description": "Sombreamento chapado: cada face com uma cor só, inclusive nas superfícies curvas (visual low poly)." },
         "emissivo": {
           "type": "object", "required": ["cor"], "additionalProperties": false,
           "description": "Cor própria, que não depende de luz — um mostrador aceso, um LED.",
@@ -58,7 +64,66 @@
             "cor": { "type": "string" },
             "intensidade": { "type": "number", "minimum": 0, "default": 1 }
           }
+        },
+        "textura": {
+          "type": "object", "required": ["src"], "additionalProperties": false,
+          "description": "Imagem repetida sobre a superfície inteira do nó, pelo UV canônico de cada tipo (ver `spec/README.md`). A cor multiplica a imagem; com textura, a cor padrão é branca.",
+          "properties": {
+            "src": { "type": "string", "minLength": 1, "description": "Caminho/URL da imagem, resolvido pelo backend." },
+            "repetir": { "$ref": "#/$defs/ponto2d", "description": "Repetições em (u, v). Padrão [1, 1]." },
+            "rotacao": { "type": "number", "description": "Giro da imagem em torno do centro, em radianos." }
+          }
         }
+      }
+    },
+    "adesivo": {
+      "type": "object", "required": ["src", "face"], "additionalProperties": false,
+      "description": "Imagem colada numa região de uma superfície do nó. Aparência pura: não entra em bbox, layout nem linter. Face plana: `u`/`v` = centro no plano da face (mesma convenção de furo), `largura`/`altura` em metros (padrão: a face inteira), imagem legível vista de fora (topo para +y nas faces verticais, para −z em topo/base). `lateral` (cylinder, cone, lathe): `u` = ângulo do centro (0 = +z, crescendo para +x), `v` = altura do centro, `largura` = arco em metros na altura `v` (padrão: volta inteira), `altura` em metros (padrão: a peça inteira).",
+      "properties": {
+        "src": { "type": "string", "minLength": 1 },
+        "face": { "enum": ["topo", "base", "norte", "sul", "leste", "oeste", "+y", "-y", "-z", "+z", "+x", "-x", "lateral"] },
+        "u": { "type": "number" },
+        "v": { "type": "number" },
+        "largura": { "type": "number", "exclusiveMinimum": 0 },
+        "altura": { "type": "number", "exclusiveMinimum": 0 },
+        "rotacao": { "type": "number", "description": "Só face plana: giro da imagem em radianos." }
+      }
+    },
+    "animacao": {
+      "type": "object", "required": ["nome", "faixas"], "additionalProperties": false,
+      "properties": {
+        "nome": { "type": "string", "minLength": 1, "description": "Único na cena." },
+        "duracao": { "type": "number", "exclusiveMinimum": 0, "description": "Segundos. Padrão: o `t` do último quadro de todas as faixas." },
+        "repetir": { "enum": ["nao", "sempre", "vaivem"], "default": "nao" },
+        "faixas": { "type": "array", "items": { "$ref": "#/$defs/faixaAnimacao" } }
+      }
+    },
+    "faixaAnimacao": {
+      "type": "object", "required": ["no", "propriedade", "quadros"], "additionalProperties": false,
+      "properties": {
+        "no": { "type": "string", "description": "Id do nó animado." },
+        "propriedade": {
+          "enum": ["posicao", "rotacao", "escala", "angulo", "opacidade", "cor"],
+          "description": "`posicao`/`rotacao`/`escala`: vec3 do transform (espaço do pai). `angulo`: params.angulo de uma `junta` (radianos). `opacidade`: 0..1. `cor`: '#rrggbb'."
+        },
+        "quadros": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["t", "valor"], "additionalProperties": false,
+            "properties": {
+              "t": { "type": "number", "minimum": 0, "description": "Segundos. Estritamente crescente dentro da faixa." },
+              "valor": {
+                "oneOf": [
+                  { "type": "number" },
+                  { "$ref": "#/$defs/vec3" },
+                  { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+                ]
+              }
+            }
+          }
+        },
+        "interpolacao": { "enum": ["linear", "suave", "degrau"], "default": "linear" },
+        "relativo": { "type": "boolean", "default": false, "description": "Valores relativos à pose de repouso: somados (posicao, angulo), multiplicados (escala) ou compostos no referencial do nó (rotacao). Não vale para opacidade/cor." }
       }
     },
     "validacao": {
@@ -146,7 +211,7 @@
         "nome": { "type": "string", "description": "Rótulo semântico opcional ('mesa', 'xícara'). Não afeta a geometria; é o que permite descrever a cena em prosa." },
         "tipo": {
           "enum": [
-            "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix",
+            "box", "sphere", "cylinder", "cone", "plane", "torus", "extrude", "lathe", "helix", "sweep",
             "model", "grupo", "row", "column", "stack", "junta"
           ]
         },
@@ -155,6 +220,7 @@
         "material": { "$ref": "#/$defs/material" },
         "filhos": { "type": "array", "items": { "$ref": "#/$defs/no" } },
         "features": { "type": "array", "items": { "$ref": "#/$defs/feature" } },
+        "adesivos": { "type": "array", "items": { "$ref": "#/$defs/adesivo" } },
         "validacao": { "$ref": "#/$defs/validacao" }
       },
       "allOf": [
@@ -176,6 +242,8 @@
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsLathe" } } } },
         { "if": { "properties": { "tipo": { "const": "helix" } }, "required": ["tipo"] },
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsHelix" } } } },
+        { "if": { "properties": { "tipo": { "const": "sweep" } }, "required": ["tipo"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/paramsSweep" } } } },
         { "if": { "properties": { "tipo": { "const": "model" } }, "required": ["tipo"] },
           "then": { "properties": { "params": { "$ref": "#/$defs/paramsModel" }, "features": { "maxItems": 0 } } } },
         { "if": { "properties": { "tipo": { "enum": ["row", "column", "stack"] } }, "required": ["tipo"] },
@@ -260,7 +328,7 @@
     },
     "paramsHelix": {
       "type": "object", "required": ["raio", "raioTubo", "passo", "voltas"], "additionalProperties": false,
-      "description": "Tubo de seção circular varrendo um caminho helicoidal em torno do eixo +y local, centrado na origem (mesmo eixo de `cylinder`/`lathe`). `passo` é a distância percorrida em y por volta completa; `voltas` pode ser fracionário. Primeiro caso de varredura ao longo de um caminho suportado pelo core — ver nota no README sobre um futuro `sweep` genérico.",
+      "description": "Tubo de seção circular varrendo um caminho helicoidal em torno do eixo +y local, centrado na origem (mesmo eixo de `cylinder`/`lathe`). `passo` é a distância percorrida em y por volta completa; `voltas` pode ser fracionário. Caso particular de varredura com forma fechada; para um caminho qualquer, ver `sweep`.",
       "properties": {
         "raio": { "type": "number", "exclusiveMinimum": 0, "description": "Raio do caminho helicoidal (eixo até o centro do tubo)." },
         "raioTubo": { "type": "number", "exclusiveMinimum": 0, "description": "Raio da seção circular do tubo." },
@@ -269,6 +337,55 @@
         "segmentosPorVolta": { "type": "integer", "minimum": 3, "default": 24 },
         "segmentosTubo": { "type": "integer", "minimum": 3, "default": 8 }
       }
+    },
+    "paramsSweep": {
+      "type": "object", "required": ["caminho", "secao"], "additionalProperties": false,
+      "description": "Seção 2D varrendo um caminho 3D (fio, cabo, cano dobrado, metalon, cantoneira, quadro soldado). A seção fica no plano (s, t) de cada anel: s à direita de quem percorre o caminho, t para `cima`; o referencial acompanha o caminho sem torcer (transporte paralelo). Cantos: por padrão canto vivo cortado em meia-esquadria na bissetriz; `raioCurva` > 0 troca cada canto por uma dobra em arco desse raio; `suavizar` passa uma curva Catmull-Rom centrípeta por todos os pontos. A bbox é a caixa exata dos vértices da malha.",
+      "properties": {
+        "caminho": {
+          "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/vec3" },
+          "description": "Pontos no espaço local do nó. Pontos repetidos consecutivos são ignorados."
+        },
+        "secao": { "$ref": "#/$defs/secaoSweep" },
+        "suavizar": { "type": "boolean", "default": false, "description": "Curva suave passando por todos os pontos (fio, cabo, mangueira)." },
+        "raioCurva": { "type": "number", "minimum": 0, "default": 0, "description": "Raio das dobras nos cantos (cano dobrado). 0 = canto vivo em meia-esquadria. Ignorado com `suavizar`. Erro se a dobra não couber no trecho." },
+        "fechado": { "type": "boolean", "default": false, "description": "Liga o último ponto ao primeiro (anel, moldura). Sem tampas nas pontas." },
+        "cima": { "$ref": "#/$defs/vec3", "description": "Direção do eixo t da seção no primeiro ponto. Padrão [0, 1, 0]." },
+        "segmentos": { "type": "integer", "minimum": 1, "default": 12, "description": "Subdivisões por vão suave, ou por dobra de 90°." },
+        "recentrar": { "type": "boolean", "default": true, "description": "Como em `extrude`: `false` mantém o caminho nas coordenadas dadas (a origem local não vai para o centro da peça)." }
+      }
+    },
+    "secaoSweep": {
+      "oneOf": [
+        {
+          "type": "object", "required": ["tipo", "raio"], "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "circulo" },
+            "raio": { "type": "number", "exclusiveMinimum": 0 },
+            "segmentos": { "type": "integer", "minimum": 3, "default": 16 },
+            "espessura": { "type": "number", "exclusiveMinimum": 0, "description": "Parede: deixa a seção oca (cano). Menor que `raio`." }
+          }
+        },
+        {
+          "type": "object", "required": ["tipo", "largura", "altura"], "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "retangulo" },
+            "largura": { "type": "number", "exclusiveMinimum": 0, "description": "No eixo s (à direita do caminho)." },
+            "altura": { "type": "number", "exclusiveMinimum": 0, "description": "No eixo t (`cima`)." },
+            "espessura": { "type": "number", "exclusiveMinimum": 0, "description": "Parede: deixa a seção oca (metalon). Menor que metade do menor lado." }
+          }
+        },
+        {
+          "type": "object", "required": ["tipo", "pontos"], "additionalProperties": false,
+          "properties": {
+            "tipo": { "const": "poligono" },
+            "pontos": {
+              "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/ponto2d" },
+              "description": "Contorno fechado em (s, t). O caminho passa pela origem (0, 0) destes pontos."
+            }
+          }
+        }
+      ]
     },
     "paramsModel": {
       "type": "object", "required": ["src", "tamanho"], "additionalProperties": false,

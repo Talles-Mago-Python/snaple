@@ -56,7 +56,7 @@ export function montarCena(): Cena {
   // (orientar padrão) alinha a base do braço à face; o pivô nasce com
   // rotação local identidade nesse referencial, então `girar([0,â,0])`
   // gira exatamente em torno do eixo compartilhado (a normal da face) —
-  // mesmo padrão usado em `examples/web/robo_frc.ts`. Testa que o
+  // mesmo padrão usado em `examples/web/modelos/robo_frc.ts`. Testa que o
   // acoplamento sobrevive à rotação (erroPosicao/erroAngulo continuam ~0
   // depois de girar, porque o eixo de giro É a normal compartilhada). ───
   const braco = ombro.face("topo").colocar(caixa(ombro, "braço", [0.02, 0.26, 0.02], M.azul));

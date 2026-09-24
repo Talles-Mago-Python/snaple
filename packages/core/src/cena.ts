@@ -3,9 +3,11 @@
  * O estado é a fonte da verdade e é JSON puro. Nada aqui carrega arquivo,
  * abre janela ou fala com GPU — por isso a lib inteira é testável em CI. */
 import { type AABB, aabbDeCentroTamanho } from "./bbox.ts";
-import { type Mundo, type NoMundo, aabbSubarvore, calcularMundo } from "./mundo.ts";
+import {
+  type Mundo, type MundoIncremental, type NoMundo, aabbSubarvore, atualizarMundo, calcularMundoComTotais,
+} from "./mundo.ts";
 import { type Mat4, aplicarDirecao, aplicarPonto, compor, decompor, inverter, multiplicar } from "./matriz.ts";
-import { criarNo, ehContainer, encontrar, percorrer, type OpcoesNo } from "./no.ts";
+import { criarNo, ehContainer, indexar, percorrer, type OpcoesNo } from "./no.ts";
 import { resolverFlex } from "./flex.ts";
 import { Face, normalizarFace } from "./face.ts";
 import { Lateral } from "./lateral.ts";
@@ -15,7 +17,12 @@ import { type GeometriaDerivada, derivarGeometria } from "./geometria.ts";
 import { type Aviso, avisosDaCena, avisosEmTexto } from "./validar.ts";
 import { descreverCena } from "./descrever.ts";
 import {
-  type Acoplamento, type CenaJSON, type FaceEntrada, type Feature, type FeatureFuro, type Material,
+  aplicarPose, duracaoDe, tempoNoCiclo, validarAnimacao, validarFaixa,
+} from "./animacao.ts";
+import { derivarAdesivos } from "./adesivos.ts";
+import {
+  type Acoplamento, type Adesivo, type Animacao, type CenaJSON, type FaixaAnimacao, type Interpolacao,
+  type PropriedadeAnimavel, type Quadro, type RepeticaoAnimacao, type ValorAnimado, type FaceEntrada, type Feature, type FeatureFuro, type Material,
   type No, type ParamsDe, type TipoAcoplamento, type TipoNo, type Transform, type TransformParcial,
   VERSAO_CENA,
 } from "./tipos.ts";
@@ -33,9 +40,20 @@ export interface OpcoesCriar extends Omit<OpcoesNo, "filhos"> {
 export class Cena {
   readonly raiz: No;
   #contador = 0;
-  #mundo: Mundo | null = null;
+  #mundo: MundoIncremental | null = null;
+  /** O que mudou desde o último `mundo()` — ver `invalidar(alvo)`. */
+  #sujos = new Set<string>();
+  #caixasSujas = new Set<string>();
+  #removidos = new Set<string>();
+  #reordenar = false;
   #acoplamentos: Acoplamento[] = [];
+  #animacoes: Animacao[] = [];
   #contadorAcoplamentos = 0;
+  /** `id → { nó, pai }`. Mantido incrementalmente por `adicionar`/`remover`/
+   * `reparentar` e reconstruído inteiro quando um id não é achado — o que
+   * cobre quem mexe em `filhos` por fora da API. Sem ele, todo `no(id)` era
+   * uma busca linear na árvore, e montar uma cena de n nós custava O(n²). */
+  #indice: Map<string, { no: No; pai: No | null }> | null = null;
 
   constructor(raiz?: No) {
     this.raiz = raiz ?? criarNo("grupo", {}, { id: ID_RAIZ });
@@ -43,18 +61,65 @@ export class Cena {
   }
 
   /** Marca o layout como pendente. Toda mutação passa por aqui; a resolução
-   * acontece na próxima leitura (`mundo()`), nunca no meio de uma edição. */
-  invalidar(): void {
-    this.#mundo = null;
+   * acontece na próxima leitura (`mundo()`), nunca no meio de uma edição.
+   *
+   * Com `alvo`, avisa que só aquele nó mudou (transform, params, ou acabou
+   * de entrar na árvore com a subárvore dele): a próxima leitura recalcula
+   * só essa subárvore e as caixas dos ancestrais, em vez da cena inteira.
+   * Sem `alvo` — o caso seguro para qualquer edição feita por fora da API,
+   * inclusive mexer em `filhos` à mão —, tudo é recalculado. */
+  invalidar(alvo?: AlvoNo): void {
+    if (alvo === undefined) {
+      this.#mundo = null;
+      this.#limparPendencias();
+    } else if (this.#mundo) {
+      this.#sujos.add(typeof alvo === "string" ? alvo : alvo.id);
+    }
   }
 
   /** Resolve os containers flex (se necessário) e devolve o snapshot mundial. */
   mundo(): Mundo {
+    if (this.#mundo && (this.#sujos.size || this.#caixasSujas.size || this.#removidos.size)) {
+      const sujos = this.#sujosNoTopo();
+      const caixas: No[] = [];
+      for (const id of this.#caixasSujas) {
+        const e = this.#entrada(id, false);
+        if (e) caixas.push(e.no);
+      }
+      this.#mundo = sujos && atualizarMundo(this.raiz, this.#mundo, {
+        sujos, caixas, removidos: this.#removidos, reordenar: this.#reordenar,
+      });
+    }
+    this.#limparPendencias();
     if (!this.#mundo) {
       resolverFlex(this.raiz);
-      this.#mundo = calcularMundo(this.raiz);
+      this.#mundo = calcularMundoComTotais(this.raiz);
     }
-    return this.#mundo;
+    return this.#mundo.mundo;
+  }
+
+  #limparPendencias(): void {
+    this.#sujos.clear();
+    this.#caixasSujas.clear();
+    this.#removidos.clear();
+    this.#reordenar = false;
+  }
+
+  /** Os sujos que não descendem de outro sujo (a subárvore deles já será
+   * recalculada pelo ancestral), com o pai de cada um. `null` se algum não
+   * estiver mais na árvore — aí o incremental não se aplica. */
+  #sujosNoTopo(): { no: No; pai: No | null }[] | null {
+    const topo: { no: No; pai: No | null }[] = [];
+    for (const id of this.#sujos) {
+      const e = this.#entrada(id, false);
+      if (!e) return null;
+      let coberto = false;
+      for (let p = e.pai; p && !coberto; p = this.#entrada(p.id, false)?.pai ?? null) {
+        coberto = this.#sujos.has(p.id);
+      }
+      if (!coberto) topo.push(e);
+    }
+    return topo;
   }
 
   // ── Árvore ─────────────────────────────────────────────────────────────
@@ -63,7 +128,7 @@ export class Cena {
     let id: string;
     do {
       id = `${tipo}_${++this.#contador}`;
-    } while (encontrar(this.raiz, id));
+    } while (this.#entrada(id, false));
     return id;
   }
 
@@ -77,21 +142,42 @@ export class Cena {
     const alvo = no instanceof NoRef ? no.no : no;
     if (!alvo.id) alvo.id = this.novoId(alvo.tipo);
     const destino = pai === undefined ? this.raiz : this.no(pai);
-    if (encontrar(this.raiz, alvo.id) && this.paiDe(alvo.id) !== null) {
+    if (this.#entrada(alvo.id, false)?.pai) {
       throw new Error(`nó '${alvo.id}' já está na cena; use mover/reparentar`);
     }
     if (destino === alvo) throw new Error(`nó '${alvo.id}' não pode ser pai de si mesmo`);
     destino.filhos.push(alvo);
-    this.invalidar();
+    if (this.#indice) indexar(alvo, destino, this.#indice);
+    this.invalidar(alvo);
     return new NoRef(this, alvo.id);
+  }
+
+  /** `pai` perdeu um filho: a caixa dele muda e a pré-ordem também. */
+  #mudouEstrutura(pai: No): void {
+    if (!this.#mundo) return;
+    this.#caixasSujas.add(pai.id);
+    this.#reordenar = true;
   }
 
   /** Resolve um `AlvoNo` para o objeto `No` que está na árvore. */
   no(alvo: AlvoNo): No {
     const id = typeof alvo === "string" ? alvo : alvo instanceof NoRef ? alvo.id : alvo.id;
-    const achado = encontrar(this.raiz, id);
+    const achado = this.#entrada(id);
     if (!achado) throw new Error(`nó '${id}' não existe na cena`);
-    return achado;
+    return achado.no;
+  }
+
+  /** Busca pelo índice. Com `reconstruir`, um id ausente reconstrói o
+   * índice uma vez antes de desistir (a árvore pode ter sido editada por fora
+   * da API); sem, a falta é a resposta — é o caso de `novoId`/`adicionar`,
+   * que procuram justamente ids que ainda NÃO existem. */
+  #entrada(id: string, reconstruir = true): { no: No; pai: No | null } | undefined {
+    this.#indice ??= indexar(this.raiz);
+    const e = this.#indice.get(id);
+    if (e && e.no.id === id) return e;
+    if (!reconstruir) return undefined;
+    this.#indice = indexar(this.raiz);
+    return this.#indice.get(id);
   }
 
   ref(alvo: AlvoNo): NoRef {
@@ -100,8 +186,7 @@ export class Cena {
 
   paiDe(alvo: AlvoNo): No | null {
     const id = this.no(alvo).id;
-    for (const { no, pai } of percorrer(this.raiz)) if (no.id === id) return pai;
-    return null;
+    return this.#entrada(id)!.pai;
   }
 
   remover(alvo: AlvoNo): No {
@@ -113,11 +198,18 @@ export class Cena {
     // um descendente dele) fica órfão — sem isso, conferirMontagem()/o
     // linter lançariam ao tentar resolver um id que não existe mais.
     const idsRemovidos = new Set<string>();
-    for (const { no: d } of percorrer(no)) idsRemovidos.add(d.id);
+    for (const { no: d } of percorrer(no)) {
+      idsRemovidos.add(d.id);
+      this.#indice?.delete(d.id);
+      this.#sujos.delete(d.id);
+      if (this.#mundo) this.#removidos.add(d.id);
+    }
     this.#acoplamentos = this.#acoplamentos.filter(
       (ac) => !idsRemovidos.has(ac.a.no) && !idsRemovidos.has(ac.b.no),
     );
-    this.invalidar();
+    // idem para faixas de animação: o nó animado saiu da cena
+    for (const a of this.#animacoes) a.faixas = a.faixas.filter((f) => !idsRemovidos.has(f.no));
+    this.#mudouEstrutura(pai);
     return no;
   }
 
@@ -133,9 +225,11 @@ export class Cena {
     const pai = this.paiDe(no.id);
     if (pai) pai.filhos.splice(pai.filhos.indexOf(no), 1);
     destino.filhos.push(no);
+    this.#indice?.set(no.id, { no, pai: destino });
     const local = multiplicar(inverter(mundo.get(destino.id)!.matriz), mNo);
     aplicarMatrizLocal(no, local);
-    this.invalidar();
+    this.invalidar(no);
+    if (pai) this.#mudouEstrutura(pai);
     return new NoRef(this, no.id);
   }
 
@@ -179,7 +273,7 @@ export class Cena {
       no.transform.posicao[1] + local[1],
       no.transform.posicao[2] + local[2],
     ];
-    this.invalidar();
+    this.invalidar(no);
   }
 
   /** Move o nó para que o CENTRO da AABB da subárvore fique em `centro`. */
@@ -230,19 +324,19 @@ export class Cena {
     if (t.posicao) no.transform.posicao = [...t.posicao];
     if (t.rotacao) no.transform.rotacao = [...t.rotacao];
     if (t.escala) no.transform.escala = [...t.escala];
-    this.invalidar();
+    this.invalidar(no);
   }
 
   definirParams<T extends TipoNo>(alvo: AlvoNo, params: Partial<ParamsDe<T>>): void {
     const no = this.no(alvo);
     Object.assign(no.params as object, params);
-    this.invalidar();
+    this.invalidar(no);
   }
 
   definirMaterial(alvo: AlvoNo, material: Material): void {
     const no = this.no(alvo);
     no.material = { ...no.material, ...material };
-    this.invalidar();
+    this.invalidar(no);
   }
 
   /** Declara que `alvo` pode se sobrepor com `outro` sem virar aviso de
@@ -255,7 +349,7 @@ export class Cena {
     if (!lista.includes(idOutro)) {
       no.validacao = { ...no.validacao, contatoIntencional: [...lista, idOutro] };
     }
-    this.invalidar();
+    this.invalidar(no);
   }
 
   // ── Acoplamentos ─────────────────────────────────────────────────────
@@ -309,6 +403,93 @@ export class Cena {
     return conferirMontagemImpl(this, this.#acoplamentos, opcoes.tolerancia ?? 1e-6);
   }
 
+  // ── Animações ────────────────────────────────────────────────────────
+
+  /** Cria uma animação vazia; as faixas entram por `AnimacaoRef.faixa`. */
+  animar(nome: string, opcoes: { duracao?: number; repetir?: RepeticaoAnimacao } = {}): AnimacaoRef {
+    const a: Animacao = {
+      nome,
+      ...(opcoes.duracao !== undefined ? { duracao: opcoes.duracao } : {}),
+      ...(opcoes.repetir !== undefined ? { repetir: opcoes.repetir } : {}),
+      faixas: [],
+    };
+    validarAnimacao(a);
+    if (this.#animacoes.some((x) => x.nome === nome)) throw new Error(`já existe uma animação '${nome}'`);
+    this.#animacoes.push(a);
+    return new AnimacaoRef(this, nome);
+  }
+
+  animacoes(): readonly Animacao[] {
+    return this.#animacoes;
+  }
+
+  /** O dado guardado da animação `nome`. */
+  animacao(nome: string): Animacao {
+    const a = this.#animacoes.find((x) => x.nome === nome);
+    if (!a) throw new Error(`animação '${nome}' não existe na cena`);
+    return a;
+  }
+
+  removerAnimacao(nome: string): void {
+    this.animacao(nome);
+    this.#animacoes = this.#animacoes.filter((x) => x.nome !== nome);
+  }
+
+  /** Grava uma faixa na animação, validada contra o nó (substitui a faixa
+   * da mesma propriedade no mesmo nó, se houver). */
+  definirFaixa(nome: string, faixa: FaixaAnimacao): void {
+    const a = this.animacao(nome);
+    const no = this.no(faixa.no);
+    const f: FaixaAnimacao = { ...structuredClone(faixa), no: no.id };
+    validarFaixa(f, no);
+    a.faixas = [...a.faixas.filter((x) => !(x.no === f.no && x.propriedade === f.propriedade)), f];
+  }
+
+  /** A cena INTEIRA no instante `t` (segundos desde o play, já levando em
+   * conta `repetir`) da animação `nome` — uma cópia; esta cena não muda.
+   * Tudo funciona nela: bbox, faces, `avisos()`, `descrever()`. */
+  poseEm(nome: string, t: number): Cena {
+    const a = this.animacao(nome);
+    const copia = Cena.deJSON(this.toJSON());
+    aplicarPose(a, tempoNoCiclo(a, t), (id) => this.no(id), (id) => copia.no(id));
+    copia.invalidar();
+    return copia;
+  }
+
+  /** Roda o linter ao longo de um ciclo da animação e devolve só os
+   * instantes com problemas NOVOS — os que a cena parada não tem (uma porta
+   * que atravessa a parede ao abrir, uma junta que passa do limite). */
+  conferirAnimacao(nome: string, opcoes: { amostras?: number } = {}): ConferenciaAnimacao[] {
+    const a = this.animacao(nome);
+    const d = duracaoDe(a);
+    const n = Math.max(1, Math.round(opcoes.amostras ?? 30));
+    const tempos = [...new Set([
+      ...Array.from({ length: n + 1 }, (_, i) => (d * i) / n),
+      ...a.faixas.flatMap((f) => f.quadros.map((q) => q.t)).filter((t) => t <= d),
+    ])].sort((x, y) => x - y);
+    const chave = (x: Aviso) => `${x.tipo} ${"nos" in x ? x.nos.join(" ") : "no" in x ? x.no : ""}`;
+    const problema = (x: Aviso) => x.tipo !== "contato-intencional";
+    const base = new Set(this.avisos().filter(problema).map(chave));
+    // uma cópia só, reposicionada a cada instante: toda faixa grava valor
+    // absoluto, então o que não é animado continua em repouso
+    const pose = Cena.deJSON(this.toJSON());
+    const resultado: ConferenciaAnimacao[] = [];
+    for (const t of tempos) {
+      aplicarPose(a, t, (id) => this.no(id), (id) => pose.no(id));
+      pose.invalidar();
+      const novos = pose.avisos().filter((x) => problema(x) && !base.has(chave(x)));
+      if (novos.length) resultado.push({ t, avisos: novos });
+    }
+    return resultado;
+  }
+
+  /** `conferirAnimacao` em texto, um instante por linha. Vazio = nada novo. */
+  conferirAnimacaoTexto(nome: string, opcoes: { amostras?: number } = {}): string {
+    return this.conferirAnimacao(nome, opcoes)
+      .map(({ t, avisos }) => `t=${t.toFixed(2)} s: ${avisos.map((x) => x.texto).join("; ")}`)
+      .join("\n");
+  }
+
   // ── Análise ───────────────────────────────────────────────────────────
 
   avisos(): Aviso[] {
@@ -334,6 +515,7 @@ export class Cena {
       eixoCima: "y",
       raiz: canonizar(structuredClone(this.raiz)),
       ...(this.#acoplamentos.length ? { acoplamentos: structuredClone(this.#acoplamentos) } : {}),
+      ...(this.#animacoes.length ? { animacoes: canonizar(structuredClone(this.#animacoes)) } : {}),
     };
   }
 
@@ -358,8 +540,58 @@ export class Cena {
       if (m) maiorAcoplamento = Math.max(maiorAcoplamento, Number(m[1]));
     }
     cena.#contadorAcoplamentos = maiorAcoplamento;
+    cena.#animacoes = structuredClone(json.animacoes ?? []);
     return cena;
   }
+}
+
+/** Um instante de `conferirAnimacao` com problemas que a cena parada não tem. */
+export interface ConferenciaAnimacao {
+  t: number;
+  avisos: Aviso[];
+}
+
+/** Handle sobre uma animação — só guarda `cena` + `nome`. */
+export class AnimacaoRef {
+  readonly cena: Cena;
+  readonly nome: string;
+
+  constructor(cena: Cena, nome: string) {
+    this.cena = cena;
+    this.nome = nome;
+  }
+
+  get dados(): Animacao { return this.cena.animacao(this.nome); }
+
+  /** Anima `propriedade` de `alvo`. `quadros` como pares `[t, valor]` (ou
+   * `{ t, valor }`), em segundos, em ordem crescente de `t`:
+   *
+   * ```ts
+   * cena.animar("abrir", { repetir: "vaivem" })
+   *   .faixa(dobradica, "angulo", [[0, 0], [1.5, -1.2]], { interpolacao: "suave" })
+   *   .faixa(gaveta, "posicao", [[0, [0, 0, 0]], [1, [0, 0, 0.3]]], { relativo: true });
+   * ``` */
+  faixa(
+    alvo: AlvoNo,
+    propriedade: PropriedadeAnimavel,
+    quadros: readonly (readonly [number, ValorAnimado] | Quadro)[],
+    opcoes: { interpolacao?: Interpolacao; relativo?: boolean } = {},
+  ): this {
+    this.cena.definirFaixa(this.nome, {
+      no: this.cena.no(alvo).id,
+      propriedade,
+      quadros: quadros.map((q) => (Array.isArray(q) ? { t: q[0], valor: q[1] } : q as Quadro)),
+      ...(opcoes.interpolacao ? { interpolacao: opcoes.interpolacao } : {}),
+      ...(opcoes.relativo ? { relativo: true } : {}),
+    });
+    return this;
+  }
+
+  poseEm(t: number): Cena { return this.cena.poseEm(this.nome, t); }
+  conferir(opcoes: { amostras?: number } = {}): ConferenciaAnimacao[] {
+    return this.cena.conferirAnimacao(this.nome, opcoes);
+  }
+  remover(): void { this.cena.removerAnimacao(this.nome); }
 }
 
 /** Handle sobre um acoplamento — mesmo padrão de `NoRef`, só guarda
@@ -468,7 +700,7 @@ export class NoRef {
 
   nomear(nome: string): this {
     this.no.nome = nome;
-    this.cena.invalidar();
+    this.cena.invalidar(this.id);
     return this;
   }
 
@@ -498,7 +730,7 @@ export class NoRef {
       this.no.features = anteriores;
       throw e;
     }
-    this.cena.invalidar();
+    this.cena.invalidar(this.id);
     return this;
   }
 
@@ -519,14 +751,36 @@ export class NoRef {
       this.no.features[indice] = anterior;
       throw e;
     }
-    this.cena.invalidar();
+    this.cena.invalidar(this.id);
+    return this;
+  }
+
+  /** Cola uma imagem numa região da superfície — ver `Adesivo`. Valida
+   * antes de gravar (face que o tipo não tem, tamanho inválido viram erro). */
+  colarAdesivo(adesivo: Adesivo): this {
+    const anteriores = this.no.adesivos;
+    this.no.adesivos = [...(anteriores ?? []), structuredClone(adesivo)];
+    try {
+      derivarAdesivos(this.no);
+    } catch (e) {
+      if (anteriores) this.no.adesivos = anteriores;
+      else delete this.no.adesivos;
+      throw e;
+    }
+    this.cena.invalidar(this.id);
+    return this;
+  }
+
+  limparAdesivos(): this {
+    delete this.no.adesivos;
+    this.cena.invalidar(this.id);
     return this;
   }
 
   /** Remove todos os furos do nó. */
   limparFuros(): this {
     this.no.features = [];
-    this.cena.invalidar();
+    this.cena.invalidar(this.id);
     return this;
   }
 

@@ -40,8 +40,13 @@ errado.
   false`, para perfis desenhados num sistema de coordenadas próprio — nesse
   caso a caixa local pode ser assimétrica (`min ≠ -max`), calculada por
   `caixaLocalPropria()` em `bbox.ts` (generalização de `meiaExtensaoLocal`
-  que ainda cobre o caso simétrico sem mudança). `helix` continua sempre
-  centrado, mesmo eixo de `cylinder`/`lathe`.
+  que ainda cobre o caso simétrico sem mudança). `lathe` aceita o mesmo
+  `recentrar: false`, só no eixo da revolução (as alturas do perfil ficam
+  como declaradas; o raio continua simétrico) — também tratado em
+  `caixaLocalPropria()`. `helix` continua sempre centrado, mesmo eixo de
+  `cylinder`. `sweep` também aceita `recentrar: false`, e a caixa local dele
+  vem pronta de `varredura.ts` (é a caixa exata dos vértices; o backend usa
+  a mesma `verticeDoAnel`).
 - **O estado nunca guarda malha.** `No.params` + `No.transform` são a fonte
   da verdade; vértices só existem como saída de `derivarGeometria`
   (`packages/core/src/geometria.ts`), nunca gravados de volta no nó.
@@ -69,7 +74,7 @@ errado.
 - `NoRef` — handle fino (`cena` + `id`) devolvido por `criar`/`ref`; nunca
   guarda dado duplicado, então não pode dessincronizar. Métodos fluentes:
   `.mover()`, `.girar()`, `.escalar()`, `.material()`, `.nomear()`,
-  `.furar()`, `.atualizarFuro()`, `.limparFuros()`.
+  `.furar()`, `.atualizarFuro()`, `.limparFuros()`, `.permitirContato()`.
 - `Face` (`face.ts`) — `no.face(nome)` dá um plano de trabalho com
   `.colocar()`, `.distribuir()`, `.grade()`. Tabela de frames U/V/normal por
   face está documentada no topo do arquivo — consulte antes de mexer em
@@ -83,9 +88,15 @@ errado.
   `centralizarEm`, `empilhar`, `distribuir`, `circular`, `envelope`. Use
   `Face` quando a relação é "nesta face de um nó girado"; use `layout.ts`
   quando é "acima/ao lado no mundo".
-- `validar.ts` — o linter (`avisosDaCena`): quatro tipos de aviso
+- `validar.ts` — o linter (`avisosDaCena`): seis tipos de aviso
   (`interpenetracao`, `flutuando`, `centros-coincidentes`,
-  `acoplamento-violado`), **sempre avisos, nunca erros**. Pares pai/filho são
+  `junta-fora-do-limite`, `acoplamento-violado` e `contato-intencional`),
+  **sempre avisos, nunca erros**. O `texto` usa `nome` (fallback: id) e
+  distâncias abaixo de 1 cm em mm; os campos estruturados guardam sempre
+  ids. `centros-coincidentes` usa tolerância relativa ao tamanho da menor
+  peça (`TOL_CENTROS_FRACAO`, com piso e teto). `contato-intencional` não é problema: é o
+  registro de uma sobreposição declarada com `permitirContato`, fica de fora
+  de `avisosEmTexto()` e só é contado por `descrever()`. Pares pai/filho são
   ignorados na checagem de interpenetração (`saoParentes`); pares com um
   `acoplamento` `contato`/`pivo` entre si são igualmente ignorados na
   interpenetração e na flutuação (a relação já é a declaração de que o

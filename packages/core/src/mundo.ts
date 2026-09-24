@@ -6,7 +6,7 @@
  * geometria própria, layout sai da subárvore inteira. */
 import { type Mat4, compor, identidade, multiplicar } from "./matriz.ts";
 import { type AABB, aabbProprio, aabbDeCentroTamanho, unirAABB } from "./bbox.ts";
-import { percorrer, rotacaoEfetiva } from "./no.ts";
+import { ehFlex, rotacaoEfetiva } from "./no.ts";
 import type { No } from "./tipos.ts";
 
 export interface NoMundo {
@@ -46,30 +46,155 @@ export function aabbRelativa(no: No): AABB {
 }
 
 export function calcularMundo(raiz: No): Mundo {
-  const mapa = new Map<string, NoMundo>();
-  const matrizes = new Map<string, Mat4>();
-  const ancestraisDe = new Map<string, string[]>();
+  return calcularMundoComTotais(raiz).mundo;
+}
 
-  for (const { no, pai } of percorrer(raiz)) {
-    if (mapa.has(no.id)) {
-      throw new Error(`id duplicado na árvore: '${no.id}'`);
-    }
-    const local = compor(no.transform.posicao, rotacaoEfetiva(no), no.transform.escala);
-    const matriz = pai ? multiplicar(matrizes.get(pai.id)!, local) : local;
-    matrizes.set(no.id, matriz);
-    const ancestrais = pai ? [...ancestraisDe.get(pai.id)!, pai.id] : [];
-    ancestraisDe.set(no.id, ancestrais);
-    mapa.set(no.id, {
-      no,
-      pai,
-      matriz,
-      propria: aabbProprio(no, matriz),
-      total: aabbSubarvore(no, matriz)
-        ?? aabbDeCentroTamanho([matriz[12]!, matriz[13]!, matriz[14]!], [0, 0, 0]),
-      ancestrais,
-    });
+/** O snapshot mundial mais o que `atualizarMundo` precisa para depois
+ * recalcular só um pedaço dele. */
+export interface MundoIncremental {
+  mundo: Map<string, NoMundo>;
+  /** AABB da subárvore por id, `null` para containers vazios — ao contrário
+   * de `NoMundo.total`, que vira um ponto degenerado. É o valor que entra na
+   * união do pai. */
+  totais: Map<string, AABB | null>;
+  /** Algum nó da árvore é `row`/`column`/`stack`? Nesse caso a resolução
+   * flex pode mover irmãos e tios de quem mudou, e só o cálculo completo
+   * serve. */
+  temFlex: boolean;
+}
+
+export function calcularMundoComTotais(raiz: No): MundoIncremental {
+  const r: MundoIncremental = { mundo: new Map(), totais: new Map(), temFlex: false };
+  visitar(raiz, null, null, [], r, null);
+  return r;
+}
+
+/** O que mudou na árvore desde o último snapshot — ver `atualizarMundo`. */
+export interface MudancasMundo {
+  /** Nós cuja subárvore inteira precisa ser recalculada (transform/params
+   * mudaram, ou o nó acabou de entrar/mudar de pai), com o pai ATUAL de cada
+   * um. Nenhum descende de outro — o chamador já filtrou. */
+  sujos: readonly { no: No; pai: No | null }[];
+  /** Nós que continuam onde estavam, mas perderam um filho: só a caixa total
+   * deles (e dos ancestrais) muda. */
+  caixas: readonly No[];
+  /** Ids que saíram da árvore. */
+  removidos: Iterable<string>;
+  /** A pré-ordem mudou (reparentamento, remoção)? */
+  reordenar: boolean;
+}
+
+/** Recalcula só as subárvores sujas e as caixas totais dos ancestrais delas,
+ * partindo de um snapshot anterior. Devolve um snapshot NOVO (o anterior
+ * continua válido para quem o guardou) ou `null` quando o incremental não
+ * serve e o chamador deve recalcular tudo. O resultado é idêntico, número a
+ * número, ao de `calcularMundoComTotais` — as contas são as mesmas. */
+export function atualizarMundo(
+  raiz: No,
+  anterior: MundoIncremental,
+  mudancas: MudancasMundo,
+): MundoIncremental | null {
+  if (anterior.temFlex) return null;
+  const r: MundoIncremental = {
+    mundo: new Map(anterior.mundo),
+    totais: new Map(anterior.totais),
+    temFlex: false,
+  };
+  for (const id of mudancas.removidos) {
+    r.mundo.delete(id);
+    r.totais.delete(id);
   }
-  return mapa;
+  const vistos = new Set<string>();
+  // primeiro TODAS as subárvores sujas, depois os ancestrais: dois irmãos
+  // sujos precisam estar ambos recalculados antes de o pai reunir as caixas
+  for (const { no, pai } of mudancas.sujos) {
+    const mPai = pai ? r.mundo.get(pai.id) : null;
+    if (mPai === undefined) return null;
+    visitar(no, pai, mPai?.matriz ?? null, mPai ? [...mPai.ancestrais, pai!.id] : [], r, vistos);
+    if (r.temFlex) return null;
+  }
+  // cada passada sobe até a raiz; um ancestral comum a várias é refeito mais
+  // de uma vez, e a ÚLTIMA já vê todos os filhos atualizados (qualquer
+  // caminho que passe por um filho passa depois por ele)
+  const inicios = [...mudancas.sujos.map((s) => s.pai), ...mudancas.caixas];
+  for (const inicio of inicios) {
+    for (let a = inicio ? r.mundo.get(inicio.id) : undefined; a; a = a.pai ? r.mundo.get(a.pai.id) : undefined) {
+      let total = a.propria;
+      for (const filho of a.no.filhos) {
+        const t = r.totais.get(filho.id);
+        if (t === undefined) return null;
+        total = unirAABB(total, t);
+      }
+      r.totais.set(a.no.id, total);
+      r.mundo.set(a.no.id, { ...a, total: total ?? pontoNaOrigem(a.matriz) });
+    }
+  }
+  // quem itera o mundo (linter, descrever) conta com a pré-ordem da árvore,
+  // a mesma do cálculo completo; nó novo teria entrado no fim do Map
+  if (mudancas.reordenar || r.mundo.size !== anterior.mundo.size) {
+    const ordenado = emPreOrdem(raiz, r.mundo);
+    if (!ordenado) return null;
+    r.mundo = ordenado;
+  }
+  return r;
+}
+
+function emPreOrdem(raiz: No, mapa: Map<string, NoMundo>): Map<string, NoMundo> | null {
+  const ordenado = new Map<string, NoMundo>();
+  const pilha = [raiz];
+  while (pilha.length) {
+    const no = pilha.pop()!;
+    const m = mapa.get(no.id);
+    if (!m) return null;
+    ordenado.set(no.id, m);
+    for (let i = no.filhos.length - 1; i >= 0; i--) pilha.push(no.filhos[i]!);
+  }
+  return ordenado.size === mapa.size ? ordenado : null;
+}
+
+function pontoNaOrigem(matriz: Mat4): AABB {
+  return aabbDeCentroTamanho([matriz[12]!, matriz[13]!, matriz[14]!], [0, 0, 0]);
+}
+
+/** Pré-ordem para as matrizes, pós-ordem para a AABB total: a caixa da
+ * subárvore é a própria unida às totais dos filhos, já calculadas. Antes cada
+ * nó rodava `aabbSubarvore` na subárvore inteira de novo — O(n·profundidade)
+ * — e o resultado é o mesmo, porque a matriz de cada filho é exatamente o
+ * mesmo produto `matriz do pai × local`.
+ *
+ * `vistos` é `null` no cálculo completo (o mapa começa vazio, então `has`
+ * basta para achar id duplicado); no incremental o mapa já tem os ids
+ * antigos, e duplicado é um id visto duas vezes nesta passada ou que já
+ * pertence a OUTRO nó. */
+function visitar(
+  no: No,
+  pai: No | null,
+  matrizPai: Mat4 | null,
+  ancestrais: readonly string[],
+  r: MundoIncremental,
+  vistos: Set<string> | null,
+): AABB | null {
+  const existente = r.mundo.get(no.id);
+  if (vistos ? vistos.has(no.id) || (existente && existente.no !== no) : existente) {
+    throw new Error(`id duplicado na árvore: '${no.id}'`);
+  }
+  vistos?.add(no.id);
+  if (ehFlex(no)) r.temFlex = true;
+  const local = compor(no.transform.posicao, rotacaoEfetiva(no), no.transform.escala);
+  const matriz = matrizPai ? multiplicar(matrizPai, local) : local;
+  const propria = aabbProprio(no, matriz);
+  const entrada: NoMundo = { no, pai, matriz, propria, total: propria!, ancestrais };
+  r.mundo.set(no.id, entrada);
+  const ancestraisFilhos = [...ancestrais, no.id];
+  let total = propria;
+  for (const filho of no.filhos) {
+    total = unirAABB(total, visitar(filho, no, matriz, ancestraisFilhos, r, vistos));
+  }
+  r.totais.set(no.id, total);
+  // container vazio vira um ponto na própria origem, mas para o PAI continua
+  // sem contribuir nada (é o `null` que `aabbSubarvore` devolveria)
+  entrada.total = total ?? pontoNaOrigem(matriz);
+  return total;
 }
 
 /** Matriz do pai de `id` (identidade se for raiz) — usada para converter um
