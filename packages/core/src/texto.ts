@@ -101,10 +101,19 @@ export function tracosDoGlifo(c: string): readonly Traco[] {
 }
 
 /** `Plano` tangente a uma `Face` no ponto `(u, v)` — o texto fica raso sobre
- * a superfície plana. */
+ * a superfície plana, LEGÍVEL por quem olha a face de fora (do lado para
+ * onde a normal aponta).
+ *
+ * O `direita` é o OPOSTO do `u` da face de propósito: os frames das faces são
+ * canhotos (`n = V × U`, ver `face.ts`), e um texto escrito sobre eles sai
+ * ESPELHADO — o `+u` do "sul", por exemplo, aponta para −x, então a letra
+ * correria para a esquerda de quem está na frente. Com `direita = −u` a base
+ * `(direita, cima, normal)` fica DESTRA — `direita × cima = normal`, a mesma
+ * convenção que `planoDeLateral` já usa — e o relevo continua saindo pela
+ * normal: texto em pé, para fora, e legível do lado de fora. */
 export function planoDeFace(face: Face, u: number, v: number): Plano {
   const f = face.frame;
-  return { origem: face.pontoLocal(u, v), direita: f.u, cima: f.v, normal: f.normal };
+  return { origem: face.pontoLocal(u, v), direita: escalar(f.u, -1), cima: f.v, normal: f.normal };
 }
 
 /** `Plano` tangente a uma superfície de revolução (`Lateral`) no ponto

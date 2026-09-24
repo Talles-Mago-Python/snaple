@@ -161,7 +161,11 @@ export function avisosDaCena(cena: Cena): Aviso[] {
     // tocarem.
     if (sobrepoeAABB) {
       const obbA = obbs.get(a.no.id), obbB = obbs.get(b.no.id);
-      const sobrepoeDeVerdade = obbA && obbB ? obbsSeSobrepoem(obbA, obbB) : true;
+      // mesma régua da fase ampla acima: sobreposição de até `TOL_CONTATO` nas
+      // 15 direções é contato, não penetração (duas peças encostadas e
+      // giradas ficam com separação de ±ε em cada eixo, e o SAT, sem a folga,
+      // acusa a metade dos ângulos por arredondamento)
+      const sobrepoeDeVerdade = obbA && obbB ? obbsSeSobrepoem(obbA, obbB, TOL_CONTATO) : true;
       if (sobrepoeDeVerdade) {
         if (contatoPermitido(a, b)) {
           avisos.push({

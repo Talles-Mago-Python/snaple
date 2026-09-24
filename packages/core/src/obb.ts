@@ -69,8 +69,15 @@ const TOL_EIXO_DEGENERADO = EPS * 1e3;
 /** Duas OBBs se sobrepõem se, e só se, NENHUM dos 15 eixos candidatos as
  * separa: os 3 eixos de face de `a`, os 3 de `b`, e os 9 produtos vetoriais
  * de uma aresta de `a` com uma de `b`. Eixos quase degenerados (arestas
- * quase paralelas) são pulados — já cobertos pelos testes de face. */
-export function obbsSeSobrepoem(a: OBB, b: OBB): boolean {
+ * quase paralelas) são pulados — já cobertos pelos testes de face.
+ *
+ * `tolerancia` é a folga mínima de sobreposição para responder `true` (padrão
+ * 0: contato exato ainda conta como sobreposição, o sentido geométrico puro).
+ * O linter passa `TOL_CONTATO` — a fase ampla dele já ignora sobreposições
+ * até essa folga, e o SAT precisa usar a MESMA régua: duas peças apenas
+ * encostadas ficam com separação de ±ε em cada eixo, e sem a folga a que cai
+ * para o lado negativo do arredondamento saía como penetração de 0 m. */
+export function obbsSeSobrepoem(a: OBB, b: OBB, tolerancia = 0): boolean {
   const d = subtrair(b.centro, a.centro);
   const candidatos: Vec3[] = [...a.eixos, ...b.eixos];
   for (const ea of a.eixos) {
@@ -81,7 +88,7 @@ export function obbsSeSobrepoem(a: OBB, b: OBB): boolean {
     if (c < TOL_EIXO_DEGENERADO) continue;
     const eixo: Vec3 = [bruto[0] / c, bruto[1] / c, bruto[2] / c];
     const dist = Math.abs(produtoEscalar(d, eixo));
-    if (dist > raioProjetado(a, eixo) + raioProjetado(b, eixo)) return false;
+    if (dist > raioProjetado(a, eixo) + raioProjetado(b, eixo) - tolerancia) return false;
   }
   return true;
 }

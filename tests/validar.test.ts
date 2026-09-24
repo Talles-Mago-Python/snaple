@@ -123,3 +123,42 @@ test("texto do aviso usa o nome do nó quando existe; o campo estruturado contin
   assert.equal(flut.texto, "luminária flutua 2.00 m acima do chão, sem nada embaixo");
   assert.equal((flut as { no: string }).no, "bola");
 });
+
+/** Regressão: peças ENCOSTADAS e giradas não são penetração.
+ *
+ * O critério do linter é a fase ampla (AABB, que ignora sobreposições de até
+ * `TOL_CONTATO`) refinada pelo SAT só PARA DECIDIR. O SAT não tinha a mesma
+ * folga, e como duas faces encostadas giradas ficam com separação de ±ε
+ * (em um dos lados o arredondamento cai para o negativo), ele acusava a
+ * metade dos ângulos — 74 de 121 num par tábua/travessa girado de −0,60 a
+ * +0,60 rad, e vários deles com o texto "penetra em 0.0000 m". */
+test("peças encostadas e giradas não viram penetração (o SAT usa a mesma folga da fase ampla)", () => {
+  const falsos = (giro: number): number => {
+    const cena = new Cena();
+    const junta = cena.criar("junta", { eixo: "y", angulo: giro, limites: [-3, 3] });
+    junta.criar("box", { largura: 0.197, altura: 2.08, profundidade: 0.06 }, { nome: "tabua" });
+    // travessa com a face encostada EXATAMENTE na face de trás da tábua
+    junta.criar("box", { largura: 0.7, altura: 0.03, profundidade: 0.14 }, {
+      nome: "travessa", transform: { posicao: [0, -0.9, -0.03 - 0.07] },
+    });
+    return cena.avisos().filter((a) => a.tipo === "interpenetracao").length;
+  };
+  for (let i = -60; i <= 60; i++) {
+    const giro = i / 100;
+    assert.equal(falsos(giro), 0, `falso positivo de penetração com giro ${giro.toFixed(2)} rad`);
+  }
+});
+
+test("a folga do SAT é só folga: sobreposição de verdade continua avisando, girada ou não", () => {
+  const penetra = (giro: number): boolean => {
+    const cena = new Cena();
+    const junta = cena.criar("junta", { eixo: "y", angulo: giro, limites: [-3, 3] });
+    junta.criar("box", { largura: 0.2, altura: 0.1, profundidade: 0.06 }, { nome: "tabua" });
+    // 5 mm DENTRO da tábua — muito acima de qualquer folga numérica
+    junta.criar("box", { largura: 0.2, altura: 0.03, profundidade: 0.14 }, {
+      nome: "travessa", transform: { posicao: [0, -0.02, -0.03 - 0.07 + 0.005] },
+    });
+    return cena.avisos().some((a) => a.tipo === "interpenetracao");
+  };
+  for (const giro of [0, 0.2, 0.35, 0.5]) assert.ok(penetra(giro), `penetração real de 5 mm não avisada com giro ${giro}`);
+});
