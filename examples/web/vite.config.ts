@@ -21,8 +21,10 @@ export default defineConfig({
     host: true,
     // Vite 5+ recusa qualquer Host header fora da allowlist (proteção
     // contra DNS rebinding); IPs literais passam direto, mas um hostname
-    // (como o domínio abaixo, se apontar/for proxeado para esta máquina)
-    // precisa estar explicitamente aqui.
-    allowedHosts: ["3d-space.devsnap.com.br"],
+    // (como os abaixo, se apontar/for proxeado para esta máquina) precisa
+    // estar explicitamente aqui. O curinga `true` aceita qualquer Host —
+    // é o que faz o preview funcionar atrás de um proxy que reescreve o
+    // Host (ex.: *.e2b.app), sem travar o desenvolvimento local.
+    allowedHosts: ["3d-space.devsnap.com.br", ".e2b.app"],
   },
 });
