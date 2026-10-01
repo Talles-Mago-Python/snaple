@@ -365,9 +365,12 @@ Todos menos o último moram em `examples/web/modelos/` — abra o viewer
   biblioteca de helpers ampliada quando a peça tem muitas sub-montagens
   repetidas (texto vetorial, parafusos, serrilhado).
 - [`examples/web/modelos/relogio_explodido.ts`](../examples/web/modelos/relogio_explodido.ts)
-  — vista explodida em camadas com cursor de empilhamento, sub-montagem
-  (engrenagens, ponteiros) com seu próprio gap menor, e peças giradas por
-  fórmula de ângulo (ponteiros, marcadores de hora).
+  — vista explodida em camadas (cada camada é um `grupo`) com cursor de
+  empilhamento, sub-montagens com gap próprio (engrenagens dentadas,
+  ponteiros em `junta`), peças giradas por fórmula de ângulo (marcadores,
+  numerais em relevo) e duas animações: "montagem" (explodida ⇄ montada,
+  com cadeia de contatos reais na pose fechada) e "funcionando" (ponteiros
+  e engrenagens girando em razão de dentes).
 - [`examples/web/modelos/robo_frc.ts`](../examples/web/modelos/robo_frc.ts) —
   dezenas de juntas (`cena.acoplar` tipo `pivo`) e peças aparafusadas (tipo
   `contato`) conferidas com `cena.conferirMontagem()` numa varredura de
