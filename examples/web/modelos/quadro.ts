@@ -147,7 +147,10 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
   const cores: CoresTaverna = { ...CORES_TAVERNA, ...opcoes.cores };
 
   const acoplamentos: AcoplamentoDeclarado[] = [];
-  const flutuacoesIntencionais: Array<{ no: No; motivo: string }> = [];
+  /** Flutuação declarada direto no linter (`no.permitirFlutuacao`), que vale
+   * para a subárvore inteira; o viewer resume como "flutuações intencionais
+   * ignoradas". */
+  const flutuaIntencional = (no: No, motivo: string): void => no.permitirFlutuacao(motivo);
 
   const plano = (no: No, ponto: V3, normal: V3): PlanoLocal => ({ no, ponto, normal });
   function contato(nome: string, a: PlanoLocal, b: PlanoLocal) {
@@ -527,10 +530,10 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
         { cor: cores.chamaInterna, metalico: 0, rugosidade: 0.6, opacidade: 0.9 });
       lampioes.push(g);
     });
-    flutuacoesIntencionais.push({
-      no: lampioes[0],
-      motivo: "Chamas: luz de geometria colorida (não é emissão/luz do viewer); flutuam dentro do vidro do lampião de propósito.",
-    });
+    flutuaIntencional(
+      lampioes[0],
+      "Chamas: luz de geometria colorida (não é emissão/luz do viewer); flutuam dentro do vidro do lampião de propósito.",
+    );
   }
 
   // ========================================================================
@@ -574,10 +577,10 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
         plano(vigaNo, [hx * u, -0.09 * u, (hz - (hz < 0 ? -2.8 : 2.8)) * u], [0, -1, 0]));
       cornetas.push(g);
     });
-    flutuacoesIntencionais.push({
-      no: cornetas[0],
-      motivo: "Fios de fiação: pendurados em ganchos da viga (topos aproximados à viga); são decorativos, sem nó de gancho individual.",
-    });
+    flutuaIntencional(
+      cornetas[0],
+      "Fios de fiação: pendurados em ganchos da viga (topos aproximados à viga); são decorativos, sem nó de gancho individual.",
+    );
   }
 
   // ========================================================================
@@ -834,10 +837,10 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
     ajustarHoraRelogio(4, 17);
   }
 
-  flutuacoesIntencionais.push({
-    no: raiz,
-    motivo: "Diorama de vitrine: a face sul está aberta de propósito (a porta de serviço 'ladrilhada' vive nesse muro baixo; o salão é lido de cima/sul).",
-  });
+  flutuaIntencional(
+    raiz,
+    "Diorama de vitrine: a face sul está aberta de propósito (a porta de serviço 'ladrilhada' vive nesse muro baixo; o salão é lido de cima/sul); relógio, quadro, alarme, placas, tijolos do vão e vidraça assentam nas paredes/batentes, não no piso.",
+  );
 
   return {
     cena,
@@ -854,7 +857,6 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
     ajustarHoraRelogio,
     voltarQuatroE17,
     acoplamentos,
-    flutuacoesIntencionais,
     ficha: {
       unidade: "m" as const,
       sala: `${11 * e} × ${8.5 * e} × ${3.4 * e} (comprimento × largura × pé-direito)`,
@@ -871,7 +873,9 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
 }
 
 /*
- * FLUTUAÇÕES / INTERPENETRAÇÕES INTENCONAIS (retornadas por referência):
+ * FLUTUAÇÕES INTENCIONAIS (declaradas com `no.permitirFlutuacao(motivo)`;
+ * o linter as lista como "flutuações intencionais ignoradas") e
+ * INTERPENETRAÇÕES (contatos declarados, retornados por referência):
  * - Chamas dos lampiões: luz de geometria colorida (duas lathe
  *   translúcidas), não emissão — flutuam dentro do vidro de propósito.
  * - Fios das cornetas: pendurados em ganchos da viga (topos aproximados);

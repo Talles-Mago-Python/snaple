@@ -7,7 +7,7 @@
 import { type AABB, unirAABB } from "./bbox.ts";
 import { type NoMundo } from "./mundo.ts";
 import { percorrer } from "./no.ts";
-import { TOL_CONTATO } from "./validar.ts";
+import { TOL_CONTATO, ehProblema } from "./validar.ts";
 import { duracaoDe } from "./animacao.ts";
 import type { Cena } from "./cena.ts";
 import type { No, ParamsJunta, TipoNo } from "./tipos.ts";
@@ -321,7 +321,7 @@ export function descreverCena(cena: Cena): string {
   }
 
   const avisos = cena.avisos();
-  const problemas = avisos.filter((a) => a.tipo !== "contato-intencional");
+  const problemas = avisos.filter(ehProblema);
   if (problemas.length > 0) {
     frases.push(
       problemas.length === 1
@@ -329,13 +329,13 @@ export function descreverCena(cena: Cena): string {
         : `Avisos: ${problemas.map((a) => a.texto).join("; ")}.`,
     );
   }
-  const intencionais = avisos.length - problemas.length;
-  if (intencionais > 0) {
-    frases.push(
-      intencionais === 1
-        ? "1 contato intencional ignorado."
-        : `${intencionais} contatos intencionais ignorados.`,
-    );
+  const contatos = avisos.filter((a) => a.tipo === "contato-intencional").length;
+  const flutuacoes = avisos.filter((a) => a.tipo === "flutuacao-intencional").length;
+  if (contatos > 0) {
+    frases.push(contatos === 1 ? "1 contato intencional ignorado." : `${contatos} contatos intencionais ignorados.`);
+  }
+  if (flutuacoes > 0) {
+    frases.push(flutuacoes === 1 ? "1 flutuação intencional ignorada." : `${flutuacoes} flutuações intencionais ignoradas.`);
   }
 
   return frases.join(" ");

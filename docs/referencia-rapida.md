@@ -59,7 +59,8 @@ no.criar(tipo, params, opcoes?)   => NoRef   // cria como FILHO de `no`
   transform?: { posicao?: [x,y,z]; rotacao?: [x,y,z]; escala?: [x,y,z] };
   material?: Material;
   features?: Feature[];          // furos já na criação (normalmente se usa no.furar)
-  validacao?: { contatoIntencional?: string[] };  // ver no.permitirContato
+  validacao?: { contatoIntencional?: string[]; flutuacaoIntencional?: string };
+  // ver no.permitirContato / no.permitirFlutuacao
   pai?: string | NoRef;          // só em cena.criar; no.criar já é filho de `no`
 }
 ```
@@ -266,6 +267,7 @@ no.furar({ face, forma, u, v, profundidade? })   // ver seção Furo
 no.atualizarFuro(indice, { ... })      // edita um furo já existente
 no.limparFuros()
 no.permitirContato(outro)              // sobreposição com `outro` deixa de ser aviso de interpenetração
+no.permitirFlutuacao(motivo?)          // nó E subárvore podem ficar sem apoio; vira `flutuacao-intencional`
 no.bbox()                              // AABB de mundo, com subárvore
 no.bboxPropria()                       // AABB de mundo, só a geometria própria
 no.remover()
@@ -415,11 +417,13 @@ cena.descrever() => string        // a cena inteira em prosa (relações + aviso
 ```
 
 São sempre **avisos**, nunca erro/exceção: interpenetração pode ser
-deliberada, a lib não julga. Seis tipos: `interpenetracao`, `flutuando`,
+deliberada, a lib não julga. Sete tipos: `interpenetracao`, `flutuando`,
 `centros-coincidentes`, `junta-fora-do-limite`, `acoplamento-violado` (ver
-seção seguinte) e `contato-intencional`. Este último não é problema: marca
-uma sobreposição declarada com `no.permitirContato(outro)`, só aparece em
-`avisos()` e fica de fora de `avisosTexto()`.
+seção seguinte), `contato-intencional` e `flutuacao-intencional`. Os dois
+últimos não são problema: marcam, respectivamente, uma sobreposição
+declarada com `no.permitirContato(outro)` e uma flutuação declarada com
+`no.permitirFlutuacao(motivo)` (que vale para o nó e toda a subárvore).
+Eles só aparecem em `avisos()` e ficam de fora de `avisosTexto()`.
 
 ## Acoplamentos (`contato`/`pivo`) — relação declarada, conferida sob demanda
 

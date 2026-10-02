@@ -55,6 +55,17 @@ export interface AvisoFlutuando extends AvisoBase {
   altura: number;
 }
 
+/** Não é um problema: a peça está sem apoio, mas a flutuação foi declarada
+ * intencional (`no.permitirFlutuacao(motivo)`, vale para a subárvore) — por
+ * isso fica de fora de `avisosEmTexto()` (que só lista problemas) e existe
+ * para `descrever()` poder resumir quantas flutuações assim foram ignoradas. */
+export interface AvisoFlutuacaoIntencional extends AvisoBase {
+  tipo: "flutuacao-intencional";
+  no: string;
+  altura: number;
+  motivo: string;
+}
+
 export interface AvisoCentrosCoincidentes extends AvisoBase {
   tipo: "centros-coincidentes";
   nos: [string, string];
@@ -87,7 +98,15 @@ export interface AvisoAcoplamentoViolado extends AvisoBase {
 
 export type Aviso =
   | AvisoInterpenetracao | AvisoFlutuando | AvisoCentrosCoincidentes
-  | AvisoContatoIntencional | AvisoJuntaForaDoLimite | AvisoAcoplamentoViolado;
+  | AvisoContatoIntencional | AvisoFlutuacaoIntencional
+  | AvisoJuntaForaDoLimite | AvisoAcoplamentoViolado;
+
+/** Aviso que não é problema: uma sobreposição/flutuação declarada como
+ * intencional. `avisosEmTexto()` e o resumo de `descrever()` usam isto para
+ * separar o que é defeito do que é declaração. */
+export function ehProblema(a: Aviso): boolean {
+  return a.tipo !== "contato-intencional" && a.tipo !== "flutuacao-intencional";
+}
 
 function emGraus(rad: number): string {
   return `${arred((rad * 180) / Math.PI, 1)}°`;
@@ -203,12 +222,23 @@ export function avisosDaCena(cena: Cena): Aviso[] {
     if (caixa.min[1]! <= TOL_CHAO) return;
     if (nosComAcoplamento.has(m.no.id)) return; // apoio/articulação já declarados
     if (!apoiado[i]) {
-      avisos.push({
-        tipo: "flutuando",
-        no: m.no.id,
-        altura: caixa.min[1]!,
-        texto: `${rotulo(m.no)} flutua ${fmt(caixa.min[1]!)} acima do chão, sem nada embaixo`,
-      });
+      const motivo = flutuacaoDeclarada(m, mundo);
+      if (motivo !== null) {
+        avisos.push({
+          tipo: "flutuacao-intencional",
+          no: m.no.id,
+          altura: caixa.min[1]!,
+          motivo,
+          texto: `${rotulo(m.no)} flutua ${fmt(caixa.min[1]!)} — flutuação declarada intencional${motivo ? ` (${motivo})` : ""}`,
+        });
+      } else {
+        avisos.push({
+          tipo: "flutuando",
+          no: m.no.id,
+          altura: caixa.min[1]!,
+          texto: `${rotulo(m.no)} flutua ${fmt(caixa.min[1]!)} acima do chão, sem nada embaixo`,
+        });
+      }
     }
   });
 
@@ -243,6 +273,20 @@ export function avisosDaCena(cena: Cena): Aviso[] {
   }
 
   return avisos;
+}
+
+/** Motivo da flutuação declarada no próprio nó ou em qualquer ancestral
+ * (`permitirFlutuacao`), ou `null` se ninguém declarou. A declaração cobre a
+ * subárvore: declarar na camada da vista explodida livra todas as peças
+ * dela de uma vez. */
+function flutuacaoDeclarada(m: NoMundo, mundo: ReadonlyMap<string, NoMundo>): string | null {
+  const propria = m.no.validacao?.flutuacaoIntencional;
+  if (propria !== undefined) return propria;
+  for (const id of m.ancestrais) {
+    const v = mundo.get(id)?.no.validacao?.flutuacaoIntencional;
+    if (v !== undefined) return v;
+  }
+  return null;
 }
 
 /** `c` apoia `caixa`: encosta por baixo (ou já sobrepõe) e cobre em XZ. */
@@ -319,7 +363,7 @@ function paresCandidatos(nos: readonly NoMundo[], diagonais: ReadonlyMap<string,
 /** Só os avisos que são PROBLEMAS — `contato-intencional` fica de fora (não
  * é algo a corrigir, é `descrever()` que resume quantos foram ignorados). */
 export function avisosEmTexto(avisos: readonly Aviso[]): string {
-  const problemas = avisos.filter((a) => a.tipo !== "contato-intencional");
+  const problemas = avisos.filter(ehProblema);
   if (problemas.length === 0) return "";
   return problemas.map((a) => `AVISO: ${a.texto}`).join("\n");
 }

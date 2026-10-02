@@ -14,7 +14,7 @@ import { Lateral } from "./lateral.ts";
 import { apontar, type OpcoesApontar } from "./orientacao.ts";
 import { conferirMontagem as conferirMontagemImpl, type RelatorioMontagem } from "./acoplamento.ts";
 import { type GeometriaDerivada, derivarGeometria } from "./geometria.ts";
-import { type Aviso, avisosDaCena, avisosEmTexto } from "./validar.ts";
+import { type Aviso, avisosDaCena, avisosEmTexto, ehProblema } from "./validar.ts";
 import { descreverCena } from "./descrever.ts";
 import {
   aplicarPose, duracaoDe, tempoNoCiclo, validarAnimacao, validarFaixa,
@@ -352,6 +352,21 @@ export class Cena {
     this.invalidar(no);
   }
 
+  /** Declara que `alvo` — e toda a sua subárvore — pode ficar sem apoio por
+   * baixo sem virar aviso de flutuação: prateleira fixada na parede, camada
+   * de vista explodida, luminária pendurada. `motivo` entra no texto do
+   * aviso intencional e no resumo de `descrever()`. Declarar no ancestral
+   * já cobre os descendentes; não precisa chamar peça por peça. */
+  permitirFlutuacao(alvo: AlvoNo, motivo = ""): void {
+    const no = this.no(alvo);
+    const atual = no.validacao?.flutuacaoIntencional;
+    // chamar de novo acumula motivos — declarar por peça e por grupo não
+    // se atropelam.
+    const junto = atual === undefined ? motivo : atual && motivo ? `${atual}; ${motivo}` : atual || motivo;
+    no.validacao = { ...no.validacao, flutuacaoIntencional: junto };
+    this.invalidar(no);
+  }
+
   // ── Acoplamentos ─────────────────────────────────────────────────────
 
   /** Declara uma relação entre duas faces — verificada sob demanda por
@@ -468,7 +483,7 @@ export class Cena {
       ...a.faixas.flatMap((f) => f.quadros.map((q) => q.t)).filter((t) => t <= d),
     ])].sort((x, y) => x - y);
     const chave = (x: Aviso) => `${x.tipo} ${"nos" in x ? x.nos.join(" ") : "no" in x ? x.no : ""}`;
-    const problema = (x: Aviso) => x.tipo !== "contato-intencional";
+    const problema = ehProblema;
     const base = new Set(this.avisos().filter(problema).map(chave));
     // uma cópia só, reposicionada a cada instante: toda faixa grava valor
     // absoluto, então o que não é animado continua em repouso
@@ -707,6 +722,13 @@ export class NoRef {
   /** Declara este contato como intencional — ver `Cena.permitirContato`. */
   permitirContato(outro: AlvoNo): this {
     this.cena.permitirContato(this.id, outro);
+    return this;
+  }
+
+  /** Declara esta flutuação como intencional — ver
+   * `Cena.permitirFlutuacao`. Vale para o nó e toda a sua subárvore. */
+  permitirFlutuacao(motivo = ""): this {
+    this.cena.permitirFlutuacao(this.id, motivo);
     return this;
   }
 

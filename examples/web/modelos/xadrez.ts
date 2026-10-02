@@ -144,7 +144,12 @@ export function montarCena(): Cena {
   };
 
   // ── Raiz ─────────────────────────────────────────────────────────────────
-  const raiz = cena.criar("grupo", {}, { nome: "rei-xadrez" });
+  const raiz = cena
+    .criar("grupo", {}, { nome: "rei-xadrez" })
+    .permitirFlutuacao(
+      "subpeças decorativas (esferas e cruz da coroa, placa de identificação) " +
+        "vão coladas acima da ponta da peça — o linter não conta contato pontual como apoio",
+    );
 
   // Feltro na base (garante minY=0)
   const feltro = cilindro(

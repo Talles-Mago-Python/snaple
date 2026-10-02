@@ -270,13 +270,18 @@ export interface Adesivo {
 
 // ── Validação ────────────────────────────────────────────────────────────
 
-/** Exceções declaradas ao linter. Hoje só `contatoIntencional`: ids de
+/** Exceções declaradas ao linter. `contatoIntencional`: ids de
  * outros nós com os quais este nó pode se sobrepor sem gerar aviso de
  * interpenetração — um prego cravado numa tábua, uma rosca encaixada. Vale
  * numa direção só (A lista B OU B lista A já basta), mesmo padrão de
- * `saoParentes` para pai/filho em `mundo.ts`. */
+ * `saoParentes` para pai/filho em `mundo.ts`. `flutuacaoIntencional`: motivo
+ * pelo qual este nó E TODA A SUA SUBÁRVORE podem ficar sem apoio por baixo
+ * sem gerar aviso de flutuação — prateleira fixada na parede, camada de uma
+ * vista explodida, relógio pendurado. Declarar no ancestral já cobre os
+ * descendentes. */
 export interface Validacao {
   contatoIntencional?: string[];
+  flutuacaoIntencional?: string;
 }
 
 // ── Nó ───────────────────────────────────────────────────────────────────

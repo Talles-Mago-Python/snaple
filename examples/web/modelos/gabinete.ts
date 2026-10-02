@@ -87,7 +87,11 @@ export function montarCena(): Cena {
   const A = CONFIG.altura;
   const P = CONFIG.profundidade;
   const e = CONFIG.espessuraChapa;
-  const raiz = cena.criar("grupo", {}, { nome: `Gabinete de computador ${L} × ${P} × ${A} mm`, transform: { posicao: [0, A / 2000 + 0.02, 0] } });
+  const raiz = cena
+    .criar("grupo", {}, { nome: `Gabinete de computador ${L} × ${P} × ${A} mm`, transform: { posicao: [0, A / 2000 + 0.02, 0] } })
+    .permitirFlutuacao(
+      "o gabinete assenta nos pés/sapatas; painéis, colunas e travessas não encostam no chão",
+    );
 
   const chassis = grupo(raiz, "01 — Chassi, fundo e teto");
   caixa(chassis, "Fundo da chapa", L - 2 * e, e, P - 2 * e, [0, -A / 2 + e / 2, 0], M.chapaInterna);

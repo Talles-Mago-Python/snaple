@@ -20,10 +20,11 @@ import { Cena } from "@snaple/core";
  * junta/rotação de ponteiro usa ângulo NEGATIVO (eixo +y positivo gira
  * anti-horário visto de cima).
  *
- * A flutuação das camadas na pose explodida é da natureza da vista (o
- * linter avisa, de propósito); na pose montada da animação cada camada
- * assenta na de baixo. Uniões deliberadas (dente–cubo–pino, engrenagens
- * vizinhas, contrapeso do segundos) são declaradas com `permitirContato`.
+ * A flutuação das camadas na pose explodida é da natureza da vista: cada
+ * grupo de camada declara `permitirFlutuacao` (o linter lista como
+ * intencional ignorada) e, na pose montada da animação, cada camada assenta
+ * na de baixo. Uniões deliberadas (dente–cubo–pino, engrenagens vizinhas,
+ * contrapeso do segundos) são declaradas com `permitirContato`.
  */
 type V2 = [number, number];
 type V3 = [number, number, number];
@@ -173,7 +174,11 @@ export function montarCena(): Cena {
   yMontado[6] = yMontado[5]! + PRATELEIRA_VIDRO - FUNDO_ARO;
 
   const camada = (nome: string, i: number): No =>
-    cena.criar("grupo", {}, { nome, transform: { posicao: [0, yExplodido[i]!, 0] } });
+    cena
+      .criar("grupo", {}, { nome, transform: { posicao: [0, yExplodido[i]!, 0] } })
+      .permitirFlutuacao(
+        "vista explodida: a camada só assenta na de baixo com a animação 'montagem' fechada",
+      );
 
   // ═══ 1. Caixa traseira ─────────────────────────────────────────────────
   const caixa = camada("caixa_traseira", 0);

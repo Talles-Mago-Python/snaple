@@ -45,7 +45,12 @@ roda no final:
 4. **Leia os avisos e decida, um por um, se são esperados.** O linter nunca
    bloqueia (ver `README.md`, seção "O linter de cena") — cabe a você separar
    "flutuando de propósito" (uma prateleira na parede, uma peça de vista
-   explodida) de "flutuando por engano" (esqueceu de encostar algo).
+   explodida) de "flutuando por engano" (esqueceu de encostar algo). O que
+   for de propósito, declare: `no.permitirFlutuacao(motivo)` (vale para o nó
+   e toda a subárvore — declarar no grupo da camada/prateleira livra as
+   peças de uma vez) e `no.permitirContato(outro)` para uniões deliberadas.
+   Assim `avisosTexto()` fica limpo e o que é intencional aparece resumido
+   em `descrever()`.
 5. **Só então** abra o viewer (`npm run dev`) e escolha o arquivo no seletor
    — se ele já mora em `examples/web/modelos/`, aparece sozinho na lista.
    Chegar no viewer com a prosa e os avisos já limpos economiza a maior
@@ -319,9 +324,10 @@ cena.animar("abrir", { repetir: "vaivem" })
 
 ## Checklist antes de considerar o modelo pronto
 
-- [ ] `avisosTexto()` não tem nada além do que você espera de propósito
-      (interpenetração deliberada, flutuação de vista explodida ou peça na
-      parede) — todo o resto foi corrigido, não ignorado.
+- [ ] `avisosTexto()` está limpo: o que é de propósito (interpenetração
+      deliberada, flutuação de vista explodida ou peça na parede) foi
+      declarado com `permitirContato`/`permitirFlutuacao` — e todo o resto
+      foi corrigido, não ignorado.
 - [ ] `descrever()` lê como a descrição que você daria da peça em português,
       sem surpresas de posição ("a leste" quando devia ser "no centro").
 - [ ] Nenhuma coordenada de mundo foi cravada à mão sem vir de uma relação ou

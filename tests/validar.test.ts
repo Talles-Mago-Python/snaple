@@ -123,3 +123,36 @@ test("texto do aviso usa o nome do nó quando existe; o campo estruturado contin
   assert.equal(flut.texto, "luminária flutua 2.00 m acima do chão, sem nada embaixo");
   assert.equal((flut as { no: string }).no, "bola");
 });
+
+test("permitirFlutuacao: o nó some do 'flutuando' e vira aviso intencional, fora do texto", () => {
+  const cena = new Cena();
+  const prateleira = cena.criar(
+    "box", { largura: 0.8, altura: 0.04, profundidade: 0.3 },
+    { id: "prateleira", nome: "prateleira", transform: { posicao: [0, 1.4, 0] } },
+  );
+  assert.ok(cena.avisos().some((a) => a.tipo === "flutuando"), "sanidade: sem declaração, flutua");
+
+  prateleira.permitirFlutuacao("parafusada na parede");
+
+  const avisos = cena.avisos();
+  assert.equal(avisos.filter((a) => a.tipo === "flutuando").length, 0);
+  const dec = avisos.find((a) => a.tipo === "flutuacao-intencional")!;
+  assert.equal(dec.no, "prateleira");
+  assert.ok(dec.texto.includes("parafusada na parede"), dec.texto);
+  // intencional não é problema: texto e o resumo de descrever() refletem isso
+  assert.equal(cena.avisosTexto(), "");
+  assert.ok(cena.descrever().includes("1 flutuação intencional ignorada"), cena.descrever());
+});
+
+test("permitirFlutuacao no ancestral cobre a subárvore inteira", () => {
+  const cena = new Cena();
+  const camada = cena.criar("grupo", {}, { id: "camada", nome: "camada", transform: { posicao: [0, 1, 0] } });
+  cena.criar("box", { largura: 0.3, altura: 0.05, profundidade: 0.3 }, { pai: "camada", nome: "peça" });
+  assert.equal(cena.avisos().filter((a) => a.tipo === "flutuando").length, 1, "sanidade: sem declaração, a peça flutua");
+
+  camada.permitirFlutuacao("vista explodida");
+
+  const avisos = cena.avisos();
+  assert.equal(avisos.filter((a) => a.tipo === "flutuando").length, 0);
+  assert.equal(avisos.filter((a) => a.tipo === "flutuacao-intencional").length, 1);
+});

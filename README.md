@@ -410,10 +410,12 @@ Os tipos de aviso (`Aviso.tipo`):
 | `junta-fora-do-limite` | o `angulo` de uma `junta` saiu de `limites` |
 | `acoplamento-violado` | um [acoplamento](#acoplamentos--verificar-não-resolver) deixou de valer na pose atual |
 | `contato-intencional` | sobreposição declarada com `no.permitirContato(outro)` — não é problema |
+| `flutuacao-intencional` | flutuação declarada com `no.permitirFlutuacao(motivo)` (vale para a subárvore) — não é problema |
 
-`contato-intencional` só aparece no array de `cena.avisos()`: fica de fora de
-`avisosTexto()`, e `descrever()` apenas resume quantos foram ignorados
-("2 contatos intencionais ignorados.").
+`contato-intencional` e `flutuacao-intencional` só aparecem no array de
+`cena.avisos()`: ficam de fora de `avisosTexto()`, e `descrever()` apenas
+resume quantos foram ignorados ("2 contatos intencionais ignorados.",
+"43 flutuações intencionais ignoradas.").
 
 ## Acoplamentos — verificar, não resolver
 
@@ -602,7 +604,9 @@ lib, não uma parte dela.
   erro claro.
 - **Objeto fixado em parede aparece como "flutuando".** O linter procura apoio
   por baixo; uma prateleira sem suporte inferior é flagrada. É aviso, não
-  bloqueio.
+  bloqueio — e se a flutuação é por design (parede, vista explodida, peça
+  pendurada), declare `no.permitirFlutuacao(motivo)` (vale para a subárvore
+  inteira) e ela vira `flutuacao-intencional`, fora do `avisosTexto()`.
 - **Escala não-uniforme num ancestral + rotação no filho** produz cisalhamento,
   que não é representável como posição/rotação/escala. A decomposição devolve
   a aproximação ortonormal mais próxima — mesma limitação do Three.js.
