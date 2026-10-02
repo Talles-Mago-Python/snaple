@@ -287,7 +287,15 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
   **Imagem numa região** (tela, rótulo, logo): `no.colarAdesivo(...)` — numa
   face plana, ou em `face: "lateral"` para a superfície curva de
   `cylinder`/`cone`/`lathe`. Imagens ficam em `examples/web/public/` e o
-  `src` começa na raiz (`"texturas/x.png"`).
+  `src` começa na raiz (`"texturas/x.png"`). Não precisa desenhar imagem:
+  `examples/web/texturas/` tem um catálogo com onze texturas procedurais
+  tileáveis (concreto, mármore, linho, grama, granito, azulejo, carpete,
+  kraft, carbono, aço escovado, jeans) recriáveis com
+  `node examples/web/texturas/gerar-texturas.ts`, mais doze links CC0
+  prontos do Poly Haven (`TEXTURAS_PRONTAS` — o navegador baixa direto; se
+  cair, vira aviso `textura-ausente` e a peça sai com a cor). Tudo listado em
+  `examples/web/texturas/CATALOGO.md`, e a vitrine no viewer (modelo
+  `texturas`) mostra uma amostra de cada numa mesa.
 - **Peça que se mexe: modele a articulação como `junta`** e anime o
   `angulo` dela, não a `rotacao` da peça. A junta fica no eixo de giro
   (dobradiça na borda da caixa, não no centro da tampa), e o ângulo interpola
