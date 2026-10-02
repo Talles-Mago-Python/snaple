@@ -14,7 +14,7 @@ deixa a imagem passar pura.)
 
 ## Locais (geradas, sem emenda)
 
-Onze PNGs 512×512 em `public/texturas/`, procedurais e **tileáveis**
+Vinte e sete PNGs 512×512 em `public/texturas/`, procedurais e **tileáveis**
 (nenhuma emenda em qualquer `repetir`). Recria-se tudo com:
 
 ```
@@ -26,19 +26,35 @@ determinístico — rodar de novo produz arquivos idênticos. Ele só sobrescrev
 os nomes que conhece; as imagens desenhadas à mão (taverna, logo, rótulos)
 não são tocadas.
 
-| id                 | uso típico                          |
-| ------------------ | ----------------------------------- |
-| concreto_cru       | pisos, muros, bancadas              |
-| marmore_branco     | pias, colunas, tampos               |
-| linho              | cortinas, estofados, capas          |
-| grama              | jardins, terreno                    |
-| granito            | soleiras, balcões                   |
-| azulejo_branco     | cozinhas, banheiros                 |
-| carpete_cinza      | salas, escritórios                  |
-| papel_kraft        | caixas, embalagens, cartazes        |
-| fibra_carbono      | drones, volantes, molduras          |
-| metal_escovado     | eletrodomésticos, painéis           |
-| tecido_jeans       | roupas, bancos, mochilas            |
+| id                | uso típico                             |
+| ----------------- | -------------------------------------- |
+| concreto_cru      | pisos, muros, bancadas                 |
+| marmore_branco    | pias, colunas, tampos                  |
+| linho             | cortinas, estofados, capas             |
+| grama             | jardins, terreno                       |
+| granito           | soleiras, balcões                      |
+| azulejo_branco    | cozinhas, banheiros                    |
+| carpete_cinza     | salas, escritórios                     |
+| papel_kraft       | caixas, embalagens, cartazes           |
+| fibra_carbono     | drones, volantes, molduras             |
+| metal_escovado    | eletrodomésticos, painéis              |
+| tecido_jeans      | roupas, bancos, mochilas               |
+| madeira_clara     | móveis, pisos, portas                  |
+| madeira_escura    | móveis finos, molduras                 |
+| tijolo_vermelho   | paredes, fachadas                      |
+| pedra_muro        | muros, fachadas rústicas               |
+| areia             | praias, caixas de areia                |
+| neve              | telhados, terrenos de inverno          |
+| lava              | vulcões, pisos de jogo                 |
+| couro_preto       | sofás, jaquetas, estojos               |
+| cortica           | murais, revestimentos, sousplats       |
+| terrazzo          | pisos, bancadas                        |
+| parquet           | salões                                 |
+| xadrez            | salões, cozinhas, tabuleiros           |
+| lousa             | quadros, cardápios                     |
+| camuflagem        | tendas, fardas, caixotes               |
+| gelo              | geleiras, lagos congelados             |
+| borracha_diamante | pisos, caçambas, escadas               |
 
 O catálogo tipado fica em `catalogo.ts` (`TEXTURAS_LOCAIS`, com descrição e
 repetição sugerida), e a vitrine no viewer é o modelo `texturas`

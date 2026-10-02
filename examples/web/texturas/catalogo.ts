@@ -2,9 +2,10 @@
  *
  * Duas prateleiras:
  *
- * - `TEXTURAS_LOCAIS` — PNGs procedurais em `examples/web/public/texturas/`,
- *   recriáveis com `node examples/web/texturas/gerar-texturas.ts`. Sem
- *   emenda: qualquer `repetir` funciona. Uso:
+ * - `TEXTURAS_LOCAIS` — 27 PNGs procedurais em
+ *   `examples/web/public/texturas/`, recriáveis com
+ *   `node examples/web/texturas/gerar-texturas.ts`. Sem emenda: qualquer
+ *   `repetir` funciona. Uso:
  *   `material: { textura: { src: "texturas/marmore_branco.png", repetir: [2, 2] } }`
  *   (caminho relativo à raiz servida, como as texturas da taverna).
  *
@@ -53,6 +54,22 @@ export const TEXTURAS_LOCAIS: readonly TexturaLocal[] = [
   { id: "fibra_carbono", src: "texturas/fibra_carbono.png", repetir: [4, 4], descricao: "Fibra de carbono em sarja 2×2 — drones, volantes, molduras." },
   { id: "metal_escovado", src: "texturas/metal_escovado.png", repetir: [2, 1], descricao: "Aço escovado com riscos horizontais — eletrodomésticos, painéis." },
   { id: "tecido_jeans", src: "texturas/tecido_jeans.png", repetir: [3, 3], descricao: "Jeans índigo em sarja diagonal — roupas, bancos, mochilas." },
+  { id: "madeira_clara", src: "texturas/madeira_clara.png", repetir: [2, 2], descricao: "Carvalho claro de veios longos — móveis, pisos, portas." },
+  { id: "madeira_escura", src: "texturas/madeira_escura.png", repetir: [2, 2], descricao: "Nogueira escura de veios fechados — móveis finos, molduras." },
+  { id: "tijolo_vermelho", src: "texturas/tijolo_vermelho.png", repetir: [2, 2], descricao: "Tijolo vermelho em fiadas alternadas com argamassa — paredes, fachadas." },
+  { id: "pedra_muro", src: "texturas/pedra_muro.png", repetir: [2, 2], descricao: "Muro de pedras de campo com argamassa — muros, fachadas rústicas." },
+  { id: "areia", src: "texturas/areia.png", repetir: [3, 3], descricao: "Areia de praia com ondulações de vento — praias, caixas de areia." },
+  { id: "neve", src: "texturas/neve.png", repetir: [3, 3], descricao: "Neve fofa com cintilações — telhados, terrenos de inverno." },
+  { id: "lava", src: "texturas/lava.png", repetir: [2, 2], descricao: "Basalto rachado com veios incandescentes — vulcões, pisos de jogo." },
+  { id: "couro_preto", src: "texturas/couro_preto.png", repetir: [2, 2], descricao: "Couro preto vincado com grão fino — sofás, jaquetas, estojos." },
+  { id: "cortica", src: "texturas/cortica.png", repetir: [2, 2], descricao: "Cortiça em manchas castanhas — murais, revestimentos, sousplats." },
+  { id: "terrazzo", src: "texturas/terrazzo.png", repetir: [2, 2], descricao: "Terrazzo com cacos coloridos em massa clara — pisos, bancadas." },
+  { id: "parquet", src: "texturas/parquet.png", repetir: [2, 2], descricao: "Parquet quadriculado com veio alternado por tábua — salões." },
+  { id: "xadrez", src: "texturas/xadrez.png", repetir: [2, 2], descricao: "Xadrez preto e branco desgastado — salões, cozinhas, tabuleiros." },
+  { id: "lousa", src: "texturas/lousa.png", repetir: [1, 1], descricao: "Lousa de sala de aula com restos de giz — quadros, cardápios." },
+  { id: "camuflagem", src: "texturas/camuflagem.png", repetir: [2, 2], descricao: "Camuflagem de quatro tons em manchas — tendas, fardas, caixotes." },
+  { id: "gelo", src: "texturas/gelo.png", repetir: [1, 1], descricao: "Gelo azulado com trincas internas — geleiras, lagos congelados." },
+  { id: "borracha_diamante", src: "texturas/borracha_diamante.png", repetir: [3, 3], descricao: "Borracha com chapa diamante em relevo — pisos, caçambas, escadas." },
 ];
 
 export const TEXTURAS_PRONTAS: readonly TexturaPronta[] = [

@@ -18,10 +18,10 @@ export function montarCena(): Cena {
   // Mesa de amostras: tampo de madeira assentado em quatro pernas (y = 0 é
   // o chão, como em examples/mesa.ts). Nenhuma coordenada além das alturas.
   const pernas: [number, number][] = [
-    [-0.66, -0.46],
-    [0.66, -0.46],
-    [-0.66, 0.46],
-    [0.66, 0.46],
+    [-1.05, -0.9],
+    [1.05, -0.9],
+    [-1.05, 0.9],
+    [1.05, 0.9],
   ];
   for (let i = 0; i < pernas.length; i++) {
     const [x, z] = pernas[i]!;
@@ -34,18 +34,18 @@ export function montarCena(): Cena {
 
   const tampo = cena.criar(
     "box",
-    { largura: 1.5, altura: 0.05, profundidade: 1.1 },
+    { largura: 2.3, altura: 0.05, profundidade: 2.0 },
     {
       nome: "mesa_tampo",
       transform: { posicao: [0, 0.745, 0] },
-      material: { cor: "#ffffff", rugosidade: 0.7, textura: { src: "texturas/madeira.png", repetir: [1, 1] } },
+      material: { cor: "#ffffff", rugosidade: 0.7, textura: { src: "texturas/madeira.png", repetir: [2, 2] } },
     },
   );
 
-  // Uma amostra por textura, em grade 4×3 no tampo. Cada peça é um tile
+  // Uma amostra por textura, em grade 6×5 no tampo. Cada peça é um tile
   // inteiro (repetir [1,1]) para julgar o padrão de uma vez.
-  const colunas = [-0.545, -0.182, 0.182, 0.545];
-  const linhas = [0.36, 0, -0.36];
+  const colunas = [-0.9, -0.54, -0.18, 0.18, 0.54, 0.9];
+  const linhas = [0.72, 0.36, 0, -0.36, -0.72];
   TEXTURAS_LOCAIS.forEach((t, i) => {
     const u = colunas[i % colunas.length]!;
     const v = linhas[Math.floor(i / colunas.length) % linhas.length]!;

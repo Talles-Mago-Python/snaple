@@ -23,6 +23,6 @@ export default defineConfig({
     // contra DNS rebinding); IPs literais passam direto, mas um hostname
     // (como o domínio abaixo, se apontar/for proxeado para esta máquina)
     // precisa estar explicitamente aqui.
-    allowedHosts: ["3d-space.devsnap.com.br", ".e2b.app"], // .e2b.app: live preview do Arena
+    allowedHosts: ["3d-space.devsnap.com.br"],
   },
 });

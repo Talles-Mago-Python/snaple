@@ -288,9 +288,10 @@ writeFileSync("/tmp/cena.json", JSON.stringify(cena.toJSON(), null, 2));
   face plana, ou em `face: "lateral"` para a superfície curva de
   `cylinder`/`cone`/`lathe`. Imagens ficam em `examples/web/public/` e o
   `src` começa na raiz (`"texturas/x.png"`). Não precisa desenhar imagem:
-  `examples/web/texturas/` tem um catálogo com onze texturas procedurais
-  tileáveis (concreto, mármore, linho, grama, granito, azulejo, carpete,
-  kraft, carbono, aço escovado, jeans) recriáveis com
+  `examples/web/texturas/` tem um catálogo com vinte e sete texturas
+  procedurais tileáveis (concreto, mármores, madeiras, tijolo, muro de
+  pedra, tecidos, areia, neve, lava, couro, cortiça, terrazzo, parquet,
+  xadrez, lousa, camuflagem, gelo, chapa diamante…) recriáveis com
   `node examples/web/texturas/gerar-texturas.ts`, mais doze links CC0
   prontos do Poly Haven (`TEXTURAS_PRONTAS` — o navegador baixa direto; se
   cair, vira aviso `textura-ausente` e a peça sai com a cor). Tudo listado em
