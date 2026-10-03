@@ -481,7 +481,10 @@ export function montarCenaComRefs(opcoes: OpcoesSetup = {}) {
   // 1. Mesa: tampo de madeira, pés de aço e travessa traseira.
   // -------------------------------------------------------------------------
 
-  const raiz = grupo(cena, "SNAPLE_SETUP_DEV");
+  const raiz = grupo(cena, "SNAPLE_SETUP_DEV").permitirFlutuacao(
+    "vitrine sem piso: monitores, braços e acessórios vão fixados na mesa/parede — " +
+      "contato lateral não conta como apoio",
+  );
   const W_MESA = 1.4, D_MESA = 0.7, H_TAMPO = 0.028, H_PE = 0.72;
   const Y_TOPO = H_PE + H_TAMPO;
   const mesa = grupo(raiz, "mesa");

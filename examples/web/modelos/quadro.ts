@@ -150,7 +150,9 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
   /** Flutuação declarada direto no linter (`no.permitirFlutuacao`), que vale
    * para a subárvore inteira; o viewer resume como "flutuações intencionais
    * ignoradas". */
-  const flutuaIntencional = (no: No, motivo: string): void => no.permitirFlutuacao(motivo);
+  const flutuaIntencional = (no: No, motivo: string): void => {
+    no.permitirFlutuacao(motivo);
+  };
 
   const plano = (no: No, ponto: V3, normal: V3): PlanoLocal => ({ no, ponto, normal });
   function contato(nome: string, a: PlanoLocal, b: PlanoLocal) {
@@ -206,7 +208,7 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
     [0.6 * u, 1.05 * u, 4.25 * u], mat(cores.parede, 0, 0.85));
   bloco(raiz, "taverna_batente_topo", 1.3 * u, 0.1 * u, 0.3 * u,
     [0, 2.15 * u, 4.25 * u], mat(cores.parede, 0, 0.85));
-  const porta = bloco(raiz, "taverna_porta_plataforma", 1.1 * u, 2.05 * u, 0.06 * u,
+  bloco(raiz, "taverna_porta_plataforma", 1.1 * u, 2.05 * u, 0.06 * u,
     [0, 1.025 * u, 4.25 * u], mat(cores.portaPlataforma, 0, 0.85), 0.01 * u);
   bloco(raiz, "taverna_porta_vidraca", 0.2 * u, 0.28 * u, 0.015 * u,
     [0, 1.55 * u, 4.2875 * u],
@@ -294,7 +296,7 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
   XS_DORM.forEach((xs, i) => {
     contato(`taverna_trilho_dormente_${i}`,
       plano(trilho, [-0.0875 * u, -xs * u, 0], [-1, 0, 0]),
-      plano(dormSup[i], [0, 0.16 * u, 0], [0, 1, 0]));
+      plano(dormSup[i]!, [0, 0.16 * u, 0], [0, 1, 0]));
   });
   const topoTrilho = (x: number, z: number): PlanoLocal =>
     plano(trilho, [0.0875 * u, -x * u, z * u], [1, 0, 0]);
@@ -350,7 +352,7 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
     [0, -0.04 * u], [0.158 * u, -0.04 * u], [0.162 * u, -0.02 * u],
     [0.162 * u, 0.03 * u], [0.155 * u, 0.0375 * u], [0, 0.0375 * u],
   ], SEG, [0, -0.00125 * u, 0], mat(cores.relogioCaixa, 0.25, 0.55));
-  const dial = lathe(relogio, "taverna_relogio_dial", [
+  lathe(relogio, "taverna_relogio_dial", [
     [0, 0], [0.145 * u, 0], [0.145 * u, 0.002 * u], [0, 0.002 * u], [0, 0],
   ], SEG, [0, 0.036 * u, 0], mat(cores.relogioDial, 0, 0.7));
   lathe(relogio, "taverna_relogio_aro", [
@@ -506,7 +508,7 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
       ], 16, [0, 3.03 * u, 0], mat(cores.ferro, 0.5, 0.5));
       // Contato: topo da corrente (local y +0.13) na face de baixo da viga.
       const vigaZ = lz === 0 ? 0 : (lz > 0 ? 2.8 : -2.8);
-      const vigaNo = vigas[vigaZ === -2.8 ? 0 : vigaZ === 0 ? 1 : 2];
+      const vigaNo = vigas[vigaZ === -2.8 ? 0 : vigaZ === 0 ? 1 : 2]!;
       contato(`taverna_lampiao_${i}_viga`,
         plano(corrente, [0, 0.13 * u, 0], [0, 1, 0]),
         plano(vigaNo, [lx * u, -0.09 * u, (lz - vigaZ) * u], [0, -1, 0]));
@@ -531,7 +533,7 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
       lampioes.push(g);
     });
     flutuaIntencional(
-      lampioes[0],
+      lampioes[0]!,
       "Chamas: luz de geometria colorida (não é emissão/luz do viewer); flutuam dentro do vidro do lampião de propósito.",
     );
   }
@@ -571,14 +573,14 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
           { cor: cores.teia, metalico: 0, rugosidade: 0.9, opacidade: 0.12 });
       }
       // Contato: topo do suporte (local y +0.06) na face de baixo da viga.
-      const vigaNo = vigas[hz < 0 ? 0 : 2];
+      const vigaNo = vigas[hz < 0 ? 0 : 2]!;
       contato(`taverna_corneta_${i}_viga`,
         plano(suporte, [0, 0.06 * u, 0], [0, 1, 0]),
         plano(vigaNo, [hx * u, -0.09 * u, (hz - (hz < 0 ? -2.8 : 2.8)) * u], [0, -1, 0]));
       cornetas.push(g);
     });
     flutuaIntencional(
-      cornetas[0],
+      cornetas[0]!,
       "Fios de fiação: pendurados em ganchos da viga (topos aproximados à viga); são decorativos, sem nó de gancho individual.",
     );
   }
@@ -614,7 +616,7 @@ export function montarCenaComRefs(opcoes: OpcoesCena = {}) {
   ], 24, [4.5 * u, 1.89 * u, 2.8 * u], mat(cores.ferro, 0.5, 0.6));
   contato("taverna_chamine_viga",
     plano(chamine, [0, 1.27 * u, 0], [0, 1, 0]),
-    plano(vigas[2], [4.5 * u, -0.09 * u, 0], [0, -1, 0]));
+    plano(vigas[2]!, [4.5 * u, -0.09 * u, 0], [0, -1, 0]));
   // Prateleiras com latas sem rótulo + balde.
   bloco(raiz, "taverna_prateleira_1", 0.22 * u, 0.03 * u, 0.9 * u,
     [5.26 * u, 1.2 * u, 1.2 * u], mat(cores.madeirao, 0, 0.85));

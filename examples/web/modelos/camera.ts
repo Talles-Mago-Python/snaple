@@ -415,14 +415,19 @@ export function montarCena(): Cena {
   // 1. CORPO — a origem da câmera é a face inferior da chapa de base.
   // ═══════════════════════════════════════════════════════════════════════
   const alturaPes = 0.0008;
-  const camera = cena.criar(
-    "grupo",
-    {},
-    {
-      nome: "camera_snaple_r01",
-      transform: { posicao: [0, alturaPes, 0] },
-    },
-  );
+  const camera = cena
+    .criar(
+      "grupo",
+      {},
+      {
+        nome: "camera_snaple_r01",
+        transform: { posicao: [0, alturaPes, 0] },
+      },
+    )
+    .permitirFlutuacao(
+      "botões, diais, parafusos e tampas vão cravados nas faces do corpo — " +
+        "contato lateral/embutido não conta como apoio para o linter",
+    );
 
   const base = arredondado(
     camera,

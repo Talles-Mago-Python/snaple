@@ -1,0 +1,70 @@
+{
+  "acoplamentos": {
+    "nos": 7,
+    "problemas": 2
+  },
+  "alarme": {
+    "nos": 18,
+    "problemas": 14
+  },
+  "camera": {
+    "nos": 1116,
+    "problemas": 714
+  },
+  "clareira-low-poly": {
+    "nos": 19,
+    "problemas": 0
+  },
+  "expresso": {
+    "nos": 572,
+    "problemas": 193
+  },
+  "gabinete": {
+    "nos": 5422,
+    "problemas": 11837
+  },
+  "pasta-amarela": {
+    "nos": 9,
+    "problemas": 1
+  },
+  "pessoa-low-poly": {
+    "nos": 10,
+    "problemas": 2
+  },
+  "quadro": {
+    "nos": 291,
+    "problemas": 191
+  },
+  "relogio_explodido": {
+    "nos": 151,
+    "problemas": 0
+  },
+  "robo_frc": {
+    "nos": 1522,
+    "problemas": 1555
+  },
+  "setup": {
+    "nos": 2069,
+    "problemas": 396
+  },
+  "teste": {
+    "nos": 2,
+    "problemas": 0
+  },
+  "texturas": {
+    "nos": 32,
+    "problemas": 0
+  },
+  "ultima-parada": {
+    "nos": 225,
+    "problemas": 172
+  },
+  "vitrine": {
+    "nos": 14,
+    "problemas": 0
+  },
+  "xadrez": {
+    "nos": 147,
+    "problemas": 193
+  }
+}

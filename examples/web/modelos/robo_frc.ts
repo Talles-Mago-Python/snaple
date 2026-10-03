@@ -183,7 +183,10 @@ export function montarCena(): Cena { return construirFRC(CONFIG_FRC).cena; }
 export function montarFRC(o: OpcoesFRC = {}): Cena { return construirFRC(o).cena; }
 export function construirFRC(o: OpcoesFRC = {}): MontagemFRC {
   const p = resolverParametrosFRC(o), D = MEDIDAS_FRC, cena = new Cena();
-  const raiz = grupo(cena, "RIFT / 0000 · conceito FRC", Z, Z, "rift-frc");
+  const raiz = grupo(cena, "RIFT / 0000 · conceito FRC", Z, Z, "rift-frc").permitirFlutuacao(
+    "vitrine de produto: placas, suportes e acessórios vão parafusados nas " +
+      "faces do chassi — contato lateral não conta como apoio",
+  );
   const W = p.larguraChassi, L = p.profundidadeChassi, Y = D.alturaCentroChassi, topo = Y + D.alturaTuboChassi / 2;
   // `assentar`/`interfacePivo` são a única fonte de relações espaciais
   // desta montagem: cada peça "apoiada" ou "articulada" declara um

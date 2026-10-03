@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "arena/**"]
+  pull_request:
+
+jobs:
+  check-e-testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Dependências
+        run: npm ci
+      - name: Typecheck (packages + viewer/modelos)
+        run: npm run check
+      - name: Testes (inclui regressão dos modelos contra baselines)
+        run: npm test

@@ -397,7 +397,10 @@ export function montarCenaComRefs(opcoes: OpcoesEspresso = {}) {
   // 1. Envelope estrutural. Todas as alturas de apoio derivam destas âncoras.
   // -------------------------------------------------------------------------
 
-  const raiz = grupo(cena, "SNAPLE_E02");
+  const raiz = grupo(cena, "SNAPLE_E02").permitirFlutuacao(
+    "vitrine de produto: alavancas, manômetros, xícaras e tampas vão " +
+      "cravados/pendurados no corpo da máquina — contato lateral não conta como apoio",
+  );
   const W_BASE = 0.320, D_BASE = 0.360;
   const H_PE = 0.016, H_BASE = 0.014, H_PISO = 0.006;
   const Y_BASE_INF = H_PE;

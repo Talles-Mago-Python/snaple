@@ -141,22 +141,25 @@ function curva(controle: V3[], passos: number): V3[] {
   for (let k = 0; k <= passos; k++) {
     const u = k / passos * (controle.length - 1);
     const i = Math.min(Math.floor(u), controle.length - 2), t = u - i;
-    const a = controle[Math.max(0, i - 1)], b = controle[i];
-    const c = controle[i + 1], d = controle[Math.min(controle.length - 1, i + 2)];
-    resultado.push([0, 1, 2].map(e => 0.5 * (
-      2 * b[e] + (-a[e] + c[e]) * t +
-      (2 * a[e] - 5 * b[e] + 4 * c[e] - d[e]) * t * t +
-      (-a[e] + 3 * b[e] - 3 * c[e] + d[e]) * t * t * t
-    )) as V3);
+    const a = controle[Math.max(0, i - 1)]!, b = controle[i]!;
+    const c = controle[i + 1]!, d = controle[Math.min(controle.length - 1, i + 2)]!;
+    // índices literais: com `noUncheckedIndexedAccess`, `V3[number]` seria
+    // `number | undefined` — 0/1/2 como literais resolvem direto na tupla.
+    const cr = (k: 0 | 1 | 2): number => 0.5 * (
+      2 * b[k] + (-a[k] + c[k]) * t +
+      (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t * t +
+      (-a[k] + 3 * b[k] - 3 * c[k] + d[k]) * t * t * t
+    );
+    resultado.push([cr(0), cr(1), cr(2)]);
   }
   return resultado;
 }
 function tubo(p: Pai, nome: string, controle: V3[], r: number, mat: Mat, passos = 24): NoRef {
   const g = grupo(p, nome), pontos = curva(controle, passos);
   for (let i = 0; i < pontos.length - 1; i++) {
-    haste(g, `trecho ${i + 1}`, pontos[i], pontos[i + 1], r, mat, 20);
+    haste(g, `trecho ${i + 1}`, pontos[i]!, pontos[i + 1]!, r, mat, 20);
     // As esferas são uniões deliberadas: evitam frestas nas curvas segmentadas.
-    if (i > 0) esfera(g, `concordância ${i}`, r, mat, pontos[i]);
+    if (i > 0) esfera(g, `concordância ${i}`, r, mat, pontos[i]!);
   }
   return g;
 }
@@ -213,7 +216,7 @@ interface Polia2D { x: number; y: number; r: number; lado: 1 | -1 }
 function trajetoCorreia(rodas: Polia2D[], resolucao = 100): P2[] {
   const entrada: number[] = [], saida: number[] = [];
   rodas.forEach((a, i) => {
-    const j = (i + 1) % rodas.length, b = rodas[j];
+    const j = (i + 1) % rodas.length, b = rodas[j]!;
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
     const n = Math.atan2(dy, dx) + Math.acos((a.lado * a.r - b.lado * b.r) / d);
     saida[i] = n + (a.lado < 0 ? PI : 0);
@@ -221,12 +224,12 @@ function trajetoCorreia(rodas: Polia2D[], resolucao = 100): P2[] {
   });
   const pontos: P2[] = [];
   rodas.forEach((r, i) => {
-    let delta = saida[i] - entrada[i];
+    let delta = saida[i]! - entrada[i]!;
     if (r.lado > 0) { while (delta >= 0) delta -= TAU; }
     else { while (delta <= 0) delta += TAU; }
     const n = Math.max(3, Math.ceil(Math.abs(delta) / TAU * resolucao));
     for (let j = 0; j <= n; j++) {
-      const a = entrada[i] + delta * j / n;
+      const a = entrada[i]! + delta * j / n;
       pontos.push([r.x + r.r * Math.cos(a), r.y + r.r * Math.sin(a)]);
     }
   });
@@ -234,15 +237,15 @@ function trajetoCorreia(rodas: Polia2D[], resolucao = 100): P2[] {
 }
 function amostrarFechada(pontos: P2[], n: number): { p: P2; tangente: P2 }[] {
   const compr = pontos.map((a, i) => {
-    const b = pontos[(i + 1) % pontos.length]; return Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const b = pontos[(i + 1) % pontos.length]!; return Math.hypot(b[0] - a[0], b[1] - a[1]);
   });
   const total = compr.reduce((a, b) => a + b, 0);
   return Array.from({ length: n }, (_, k) => {
     let d = k * total / n, i = 0;
-    while (i < compr.length - 1 && d > compr[i]) d -= compr[i++];
-    const a = pontos[i], b = pontos[(i + 1) % pontos.length], t = d / compr[i];
+    while (i < compr.length - 1 && d > compr[i]!) d -= compr[i++]!;
+    const a = pontos[i]!, b = pontos[(i + 1) % pontos.length]!, t = d / compr[i]!;
     return { p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] as P2,
-      tangente: [(b[0] - a[0]) / compr[i], (b[1] - a[1]) / compr[i]] as P2 };
+      tangente: [(b[0] - a[0]) / compr[i]!, (b[1] - a[1]) / compr[i]!] as P2 };
   });
 }
 
@@ -291,7 +294,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
       perfil.push([0, comprBanco / 2], [-largBanco / 2, comprBanco / 2]);
       bloco = extrusao(banco, "bloco em seção longitudinal aberta", perfil, hBanco, M.bloco, [0, pe, 0], false);
       for (let j = 0; j <= 4; j++) {
-        const z = j === 0 ? -comprBanco / 2 + 0.002 : j === 4 ? comprBanco / 2 - 0.002 : (zCil[j - 1] + zCil[j]) / 2;
+        const z = j === 0 ? -comprBanco / 2 + 0.002 : j === 4 ? comprBanco / 2 - 0.002 : (zCil[j - 1]! + zCil[j]!) / 2;
         caixa(banco, "borda usinada do corte", [0.0008, hBanco, 0.004], M.corte, [0, pe + hBanco / 2, z]);
       }
     } else {
@@ -314,7 +317,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
     if (!seccionado) {
       const faceFora: FaceNome = s > 0 ? "leste" : "oeste";
       for (let i = 0; i < 3; i++) {
-        const z = (zCil[i] + zCil[i + 1]) / 2;
+        const z = (zCil[i]! + zCil[i + 1]!) / 2;
         const selo = torno(banco, `selo de expansão ${i + 1}`, [[0, -0.002], [0.018, -0.002], [0.020, 0], [0.0185, 0.003], [0, 0.003]], M.aco);
         bloco.face(faceFora).colocar(selo, { u: s * z, v: -0.014 });
       }
@@ -392,7 +395,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
   const perfilMassa: P2[] = [[-0.029, 0.059], [0.029, 0.059], [0.045, 0.029], [0.062, -0.025],
     [0.057, -0.060], [0.031, -0.078], [-0.031, -0.078], [-0.057, -0.060], [-0.062, -0.025], [-0.045, 0.029]];
   zCil.forEach((z, i) => {
-    const phi = opt.anguloVirabrequim + fase[i];
+    const phi = opt.anguloVirabrequim + fase[i]!;
     const q: V3 = [R * Math.sin(phi), R * Math.cos(phi), z];
     cilindro(virabrequim, `moente de bielas ${i + 1}`, 0.0239, 0.052, M.usinado, q, [PI / 2, 0, 0]);
     for (const s of [-1, 1]) {
@@ -410,7 +413,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
     const g = grupo(girante, `pistões e bielas · lado ${s < 0 ? "esquerdo" : "direito"}`,
       [0, 0, s * D.deslocamentoBancadas / 2], [0, 0, -s * aBanco]);
     zCil.forEach((z, i) => {
-      const phi = opt.anguloVirabrequim + fase[i];
+      const phi = opt.anguloVirabrequim + fase[i]!;
       const qx = R * Math.sin(phi), qy = R * Math.cos(phi);
       const lateral = cs * qx - s * sn * qy;
       const axial = s * sn * qx + cs * qy;
@@ -462,7 +465,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
     zCil.forEach((z, i) => {
       for (let v = 0; v < 2; v++) {
         const zv = z + (v === 0 ? -0.017 : 0.017);
-        const faseValvula = opt.anguloVirabrequim / 2 + fase[i] / 2 + (s < 0 ? PI / 4 : 0) + v * 1.9;
+        const faseValvula = opt.anguloVirabrequim / 2 + fase[i]! / 2 + (s < 0 ? PI / 4 : 0) + v * 1.9;
         const perfilLobo: P2[] = [];
         for (let j = 0; j < 48; j++) {
           const a = j * TAU / 48, r = 0.015 + 0.008 * Math.pow(Math.max(0, Math.cos(a)), 4);
@@ -745,7 +748,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
   const nomesRodas = ["damper do virabrequim", "polia da direção hidráulica", "polia da bomba d'água",
     "polia do alternador", "polia tensionadora", "polia guia de retorno"];
   rodas.forEach((r, i) => {
-    const g = grupo(acess, nomesRodas[i], [r.x, r.y, zCorreia], [PI / 2, 0, 0]);
+    const g = grupo(acess, nomesRodas[i]!, [r.x, r.y, zCorreia], [PI / 2, 0, 0]);
     const miolo = cilindro(g, "núcleo da polia", r.r - 0.004, 0.025, i === 0 ? M.ferro : M.aco);
     for (let j = 0; j < 7; j++) toro(g, r.lado < 0 ? "linha da pista lisa" : "garganta da polia",
       r.r - 0.001, r.lado < 0 ? 0.00025 : 0.0009, M.ferro, [0, (j - 3) * 0.0031, 0]);
@@ -762,7 +765,7 @@ export function montarMotorV8(opcoes: Partial<OpcoesV8> = {}): Cena {
   const caminho = trajetoCorreia(rodas, 160);
   const correia = grupo(acess, "correia serpentina EPDM · 6PK");
   caminho.forEach((a, i) => {
-    const b = caminho[(i + 1) % caminho.length], dx = b[0] - a[0], dy = b[1] - a[1];
+    const b = caminho[(i + 1) % caminho.length]!, dx = b[0] - a[0], dy = b[1] - a[1];
     caixa(correia, `segmento de correia ${i + 1}`, [0.0028, Math.hypot(dx, dy) + 0.00015, 0.020], M.borracha,
       [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, zCorreia], [0, 0, -Math.atan2(dx, dy)]);
     haste(correia, "borda reforçada da correia", [a[0], a[1], zCorreia - 0.010], [b[0], b[1], zCorreia - 0.010], 0.0004, M.ferro, 8);

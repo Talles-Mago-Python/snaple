@@ -29,9 +29,7 @@ const PI = Math.PI;
 const ZERO: V3 = [0, 0, 0];
 const FRENTE: V3 = [PI / 2, 0, 0];
 const CIMA: V3 = [-PI / 2, 0, 0];
-const BASE: V3 = [PI / 2, 0, 0];
 const ESQ: V3 = [0, 0, PI / 2];
-const DIR: V3 = [0, 0, -PI / 2];
 const COSTAS: V3 = [0, PI, 0];
 const M = {
   chapa: { cor: "#23282c", metalico: 0.72, rugosidade: 0.34 },
@@ -122,7 +120,7 @@ export function montarCena(): Cena {
 
   const painelFrente = grupo(raiz, "03 — Painel frontal", [0, 0, P / 2 + 0.6]);
   arredondada(painelFrente, "Moldura frontal", L, A, 26, 9, [0, 0, 1.0], M.moldura);
-  const moldura = arredondada(painelFrente, "Aro frontal", L - 2, A - 2, 1.1, 10, [0, 0, 14.4], M.chapa);
+  arredondada(painelFrente, "Aro frontal", L - 2, A - 2, 1.1, 10, [0, 0, 14.4], M.chapa);
   arredondada(painelFrente, "Tampão de vedação", L - 8, A - 8, 6, 8, [0, 0, -14.6], M.borda);
   arredondada(painelFrente, "Recorte da malha frontal", L - 18, A - 18, 1.5, 12, [0, 0, 11.6], M.malha);
   arredondada(painelFrente, "Vão interno do filtro", L - 26, A - 26, 1.0, 10, [0, 0, 9.4], M.poeira);
@@ -172,7 +170,7 @@ export function montarCena(): Cena {
   caixa(tampaFrente, "Ranhura de abertura", 10, 2.2, 1.0, [-L / 2 + 52, A / 2 - 33, 16.6], M.preto);
 
   const painelLateral = grupo(raiz, "05 — Painel lateral esquerdo removível", [-L / 2 - 1.6, 0, -6]);
-  const molduraLateral = arredondada(painelLateral, "Moldura do painel lateral", A, P - 12, 3.0, 14, ZERO, M.moldura, ESQ);
+  arredondada(painelLateral, "Moldura do painel lateral", A, P - 12, 3.0, 14, ZERO, M.moldura, ESQ);
   arredondada(painelLateral, "Chapa do painel lateral", A - 5, P - 17, 2.2, 12, [-2.2, 0, 0], M.chapa, ESQ);
   arredondada(painelLateral, "Recorte central do painel lateral", A - 26, P - 40, 0.8, 8, [-3.4, 0, 0], M.malha, ESQ);
   const vidro = grupo(painelLateral, "Painel de vidro fumê", [-3.5, 0, 0], ESQ);
@@ -212,7 +210,7 @@ export function montarCena(): Cena {
   for (let i = 0; i < 7; i++) {
     const y = -A / 2 + 40 + i * 18;
     caixa(trilhos, `Base do trilho ${i + 1}`, 306, 15, 1.6, [0, y, -3.4], M.chapaInterna);
-    caixa(trilhos, `Borboleta do trilho ${i + 1}`, 12, 9, 1.4, [0, y + 4, -4.4], M.escuro ? M.preto : M.preto);
+    caixa(trilhos, `Borboleta do trilho ${i + 1}`, 12, 9, 1.4, [0, y + 4, -4.4], M.preto);
     for (let j = 0; j < 11; j++) {
       caixa(trilhos, `Abertura do trilho ${i + 1}-${j + 1}`, 10, 10, 0.8, [-132 + j * 26, y - 1, -4.0], M.malha);
     }
@@ -245,7 +243,8 @@ export function montarCena(): Cena {
 
   const base = grupo(raiz, "08 — Base, pés e filtro inferior");
   arredondada(base, "Moldura inferior", L, P, 4, 10, [0, -A / 2 - 3.0, 0], M.moldura, CIMA);
-  for (const [x, z, nome] of [[-L / 2 + 24, P / 2 - 34, "dianteiro esquerdo"], [L / 2 - 24, P / 2 - 34, "dianteiro direito"], [-L / 2 + 24, -P / 2 + 34, "traseiro esquerdo"], [L / 2 - 24, -P / 2 + 34, "traseiro direito"]]) {
+  const PES: [number, number, string][] = [[-L / 2 + 24, P / 2 - 34, "dianteiro esquerdo"], [L / 2 - 24, P / 2 - 34, "dianteiro direito"], [-L / 2 + 24, -P / 2 + 34, "traseiro esquerdo"], [L / 2 - 24, -P / 2 + 34, "traseiro direito"]];
+  for (const [x, z, nome] of PES) {
     arredondada(base, `Pé ${nome}`, 26, 20, 1.5, 3, [x, z, -5.2], M.borracha, CIMA);
     caixa(base, `Base do pé ${nome}`, 30, 24, 2.4, [x, z, -3.6], M.borda, CIMA);
     parafuso(base, `Parafuso do pé ${nome}`, [x, z, -4.7], CIMA);

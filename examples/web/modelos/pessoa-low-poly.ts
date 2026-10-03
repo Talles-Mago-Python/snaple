@@ -1,6 +1,5 @@
-import { Cena, type NoRef } from "@snaple/core";
+import { Cena } from "@snaple/core";
 
-type V3 = [number, number, number];
 type Material = { cor: string; metalico?: number; rugosidade?: number; opacidade?: number; facetado?: boolean };
 
 export function montarCena(): Cena {
